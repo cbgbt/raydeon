@@ -48,7 +48,6 @@ impl<T> Paths<T> {
             nlines.push((curr, p2))
         }
 
-        dbg!(&nlines);
         Paths::new(nlines)
     }
 
