@@ -1,0 +1,12 @@
+[package]
+name = "lnrs"
+version = "0.1.0"
+authors = ["cbgbt <cbgbt@cabbage.bot>"]
+edition = "2018"
+
+[dependencies]
+euclid = "0.20"
+svg = "0.5"
+
+[dev-dependencies]
+float-cmp = "0.5"
