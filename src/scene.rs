@@ -115,14 +115,22 @@ impl Scene {
     }
 
     fn visible(&self, camera: &Camera, point: WPoint3) -> bool {
+        // let v = point - camera.eye;
+        // let r = Ray::new(camera.eye, v.normalize());
+
         let v = camera.eye - point;
         let r = Ray::new(point, v.normalize());
 
+
+
         match self.intersect(r) {
             Some(hitdata) => {
-                hitdata.dist_to >= v.length()
+                let diff = (hitdata.dist_to - v.length()).abs();
+                diff < 1.0e-1
             },
-            None => true
+            None => {
+                true
+            }
         }
     }
 

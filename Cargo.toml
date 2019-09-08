@@ -5,6 +5,8 @@ authors = ["cbgbt <cbgbt@cabbage.bot>"]
 edition = "2018"
 
 [dependencies]
+cgmath = "0.17"
+collision = "0.20"
 euclid = "0.20"
 svg = "0.5"
 

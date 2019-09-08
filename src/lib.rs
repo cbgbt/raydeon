@@ -1,4 +1,4 @@
-mod cube;
+mod rectprism;
 pub mod path;
 mod plane;
 pub mod ray;

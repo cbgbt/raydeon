@@ -1,4 +1,5 @@
 use euclid::*;
+use euclid::approxeq::ApproxEq;
 
 use crate::CPoint3;
 
@@ -19,9 +20,13 @@ impl<T> Paths<T> {
     pub fn transform<Dst>(&self, transformation: Transform3D<f64, T, Dst>) -> Paths<Dst> {
         let mut new_lines = Vec::new();
         for (p1, p2) in &self.lines {
-            let p1t = transformation.transform_point3d(*p1).unwrap();
-            let p2t = transformation.transform_point3d(*p2).unwrap();
-            new_lines.push((p1t, p2t));
+            let p1t = transformation.transform_point3d(*p1);
+            let p2t = transformation.transform_point3d(*p2);
+
+            if p1t.is_none() || p2t.is_none() {
+                continue;
+            }
+            new_lines.push((p1t.unwrap(), p2t.unwrap()));
         }
         Paths::new(new_lines)
     }
@@ -52,6 +57,46 @@ impl<T> Paths<T> {
     }
 
     pub fn simplify(mut self, threshold: f64) -> Paths<T> {
-        self
+        let eps: Point3D<f64, T> = Point3D::new(threshold, threshold, threshold);
+        let mut npaths = Vec::new();
+        let mut curr_line: Option<(Point3D<f64, T>, Point3D<f64, T>)> = None;
+        for (v1, v2) in self.lines.drain(..) {
+            if curr_line.is_none() {
+                curr_line = Some((v1, v2));
+            } else {
+                let (cv1, cv2) = curr_line.unwrap();
+                let curr_line_dir = (cv2 - cv1).normalize();
+                let nline_dir = (v2 - v1).normalize();
+
+                let same_dir = curr_line_dir.approx_eq_eps(&nline_dir, &eps.to_vector()) ||
+                    curr_line_dir.approx_eq_eps(&-nline_dir, &eps.to_vector());
+
+                if same_dir {
+                    if cv1.approx_eq_eps(&v1, &eps) {
+                        curr_line = Some((v2, cv2));
+                    } else if cv1.approx_eq_eps(&v2, &eps) {
+                        curr_line = Some((v1, cv2));
+                    } else if cv2.approx_eq_eps(&v1, &eps) {
+                        curr_line = Some((v2, cv1));
+                    } else if cv2.approx_eq_eps(&v2, &eps) {
+                        curr_line = Some((v1, cv1));
+                    } else {
+                        npaths.push((cv1, cv2));
+                        curr_line = Some((v1, v2));
+                    }
+                } else {
+                    npaths.push((cv1, cv2));
+                    curr_line = Some((v1, v2));
+                }
+
+                if cv2.approx_eq_eps(&v1, &eps) && nline_dir.approx_eq_eps(&curr_line_dir, &eps.to_vector()) {
+                    curr_line = Some((cv1, v2));
+                } else {
+                }
+            }
+
+        }
+
+        Paths::new(npaths)
     }
 }
