@@ -56,6 +56,13 @@ impl Shape for Triangle {
         let v0 = self.verts[0];
         let v1 = self.verts[1];
         let v2 = self.verts[2];
+
+        let centroid = (v0 + v1.to_vector() + v2.to_vector()) / 3.0;
+        let v0 = v0 + (v0 - centroid).normalize() * 0.05;
+        let v1 = v1 + (v1 - centroid).normalize() * 0.05;
+        let v2 = v2 + (v2 - centroid).normalize() * 0.05;
+
+
         Paths::new(vec![
             (v0, v1),
             (v1, v2),
