@@ -1,8 +1,6 @@
 use euclid::*;
 use euclid::approxeq::ApproxEq;
 
-use crate::CPoint3;
-
 #[derive(Debug, Clone)]
 pub struct Paths<T> {
     pub lines: Vec<(Point3D<f64, T>, Point3D<f64, T>)>,
