@@ -1,5 +1,5 @@
 [package]
-name = "lnrs"
+name = "raydeon"
 version = "0.1.0"
 authors = ["cbgbt <cbgbt@cabbage.bot>"]
 edition = "2018"
@@ -9,7 +9,6 @@ cgmath = "0.17"
 collision = "0.20"
 euclid = "0.20"
 rayon = "1.2"
-svg = "0.5"
 
 [dev-dependencies]
 float-cmp = "0.5"
