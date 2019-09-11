@@ -88,13 +88,7 @@ impl<T> Paths<T> {
                     npaths.push((cv1, cv2));
                     curr_line = Some((v1, v2));
                 }
-
-                if cv2.approx_eq_eps(&v1, &eps) && nline_dir.approx_eq_eps(&curr_line_dir, &eps.to_vector()) {
-                    curr_line = Some((cv1, v2));
-                } else {
-                }
             }
-
         }
 
         Paths::new(npaths)

@@ -1,4 +1,7 @@
+use rayon::prelude::*;
+
 use crate::*;
+
 
 pub struct LookingCamera {
     eye: WPoint3,
@@ -98,30 +101,18 @@ impl Scene {
     }
 
     fn intersect(&self, ray: Ray) -> Option<HitData> {
-        let mut hit = None;
-        let mut mindist = std::f64::MAX;
-        for geometry in &self.geometry {
-            match geometry.hit_by(&ray) {
-                Some(hitdata) => {
-                    if hitdata.dist_to < mindist {
-                        mindist = hitdata.dist_to;
-                        hit = Some(hitdata);
-                    }
-                },
-                None => (),
-            }
-        }
-        hit
+        self.geometry.par_iter()
+            .filter_map(|geom| {
+                geom.hit_by(&ray)
+            })
+            .min_by(|hit1, hit2| {
+                hit1.dist_to.partial_cmp(&hit2.dist_to).unwrap()
+            })
     }
 
     fn visible(&self, camera: &Camera, point: WPoint3) -> bool {
-        // let v = point - camera.eye;
-        // let r = Ray::new(camera.eye, v.normalize());
-
         let v = camera.eye - point;
         let r = Ray::new(point, v.normalize());
-
-
 
         match self.intersect(r) {
             Some(hitdata) => {

@@ -36,7 +36,7 @@ pub type WCTransform = Transform3D<f64, WorldSpace, CameraSpace>;
 pub type WWTransform = Transform3D<f64, WorldSpace, WorldSpace>;
 pub type CCTransform = Transform3D<f64, CameraSpace, CameraSpace>;
 
-pub trait Shape {
+pub trait Shape: Sync {
     fn hit_by(&self, ray: &Ray) -> Option<HitData>;
     fn paths(&self) -> Paths<WorldSpace>;
 }
