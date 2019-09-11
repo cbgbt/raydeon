@@ -37,7 +37,7 @@ impl Shape for RectPrism {
     }
 
     fn paths(&self) -> Paths<crate::WorldSpace> {
-        let expand = (self.max - self.min).normalize() * 0.0005;
+        let expand = (self.max - self.min).normalize() * 0.015;
         let pathmin = self.min - expand;
         let pathmax = self.max + expand;
 
