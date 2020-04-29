@@ -11,4 +11,4 @@ euclid = "0.20"
 rayon = "1.2"
 
 [dev-dependencies]
-float-cmp = "0.5"
+float-cmp = "0.7"
