@@ -7,7 +7,7 @@ edition = "2018"
 [dependencies]
 cgmath = "0.17"
 collision = "0.20"
-euclid = "0.20"
+euclid = "0.21"
 rayon = "1.2"
 
 [dev-dependencies]
