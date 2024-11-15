@@ -36,6 +36,10 @@ impl Shape for Plane {
     fn paths(&self) -> Paths<crate::WorldSpace> {
         unimplemented!()
     }
+
+    fn bounding_box(&self) -> Option<crate::AABB<crate::WorldSpace>> {
+        None
+    }
 }
 
 #[cfg(test)]
@@ -51,10 +55,7 @@ mod test {
                 WPoint3::new(0.0, 0.0, 0.0),
                 WVec3::new(1.0, 0.0, 0.0)
             )),
-            Some(HitData::new(
-                WPoint3::new(1.0, 0.0, 0.0),
-                1.0,
-            ))
+            Some(HitData::new(WPoint3::new(1.0, 0.0, 0.0), 1.0,))
         );
 
         assert_eq!(
@@ -62,10 +63,7 @@ mod test {
                 WPoint3::new(0.0, 1.0, 0.0),
                 WVec3::new(1.0, -1.0, 0.0)
             )),
-            Some(HitData::new(
-                WPoint3::new(1.0, 0.0, 0.0),
-                f64::sqrt(2.0),
-            ))
+            Some(HitData::new(WPoint3::new(1.0, 0.0, 0.0), f64::sqrt(2.0),))
         );
 
         assert_eq!(

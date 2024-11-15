@@ -1,7 +1,7 @@
-mod rectprism;
 pub mod path;
 mod plane;
 pub mod ray;
+mod rectprism;
 pub mod scene;
 pub mod shapes;
 mod sphere;
@@ -27,6 +27,7 @@ pub struct CanvasSpace;
 
 pub type WVec3 = Vector3D<f64, WorldSpace>;
 pub type WPoint3 = Point3D<f64, WorldSpace>;
+pub type AABB<Space> = euclid::Box3D<f64, Space>;
 
 pub type CVec3 = Vector3D<f64, CameraSpace>;
 pub type CPoint3 = Point3D<f64, CameraSpace>;
@@ -39,4 +40,5 @@ pub type CCTransform = Transform3D<f64, CameraSpace, CameraSpace>;
 pub trait Shape: Sync {
     fn hit_by(&self, ray: &Ray) -> Option<HitData>;
     fn paths(&self) -> Paths<WorldSpace>;
+    fn bounding_box(&self) -> Option<AABB<WorldSpace>>;
 }

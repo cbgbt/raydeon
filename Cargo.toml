@@ -7,8 +7,10 @@ edition = "2018"
 [dependencies]
 cgmath = "0.17"
 collision = "0.20"
-euclid = "0.20"
+euclid = "0.22"
 rayon = "1.2"
 
 [dev-dependencies]
+anyhow = "1"
 float-cmp = "0.5"
+svg = "0.18"

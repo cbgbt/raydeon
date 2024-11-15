@@ -1,5 +1,5 @@
-use euclid::*;
 use euclid::approxeq::ApproxEq;
+use euclid::*;
 
 #[derive(Debug, Clone)]
 pub struct Paths<T> {
@@ -41,10 +41,7 @@ impl<T> Paths<T> {
             let mut d = step;
             while d < l {
                 let next = curr + stepv;
-                nlines.push((
-                    curr,
-                    next
-                ));
+                nlines.push((curr, next));
                 curr = next;
                 d += step;
             }
@@ -58,35 +55,47 @@ impl<T> Paths<T> {
         let eps: Point3D<f64, T> = Point3D::new(threshold, threshold, threshold);
         let mut npaths = Vec::new();
         let mut curr_line: Option<(Point3D<f64, T>, Point3D<f64, T>)> = None;
+        let mut curr_pushed = true;
         for (v1, v2) in self.lines.drain(..) {
             if curr_line.is_none() {
                 curr_line = Some((v1, v2));
+                curr_pushed = false;
             } else {
                 let (cv1, cv2) = curr_line.unwrap();
                 let curr_line_dir = (cv2 - cv1).normalize();
                 let nline_dir = (v2 - v1).normalize();
 
-                let same_dir = curr_line_dir.approx_eq_eps(&nline_dir, &eps.to_vector()) ||
-                    curr_line_dir.approx_eq_eps(&-nline_dir, &eps.to_vector());
+                let same_dir = curr_line_dir.approx_eq_eps(&nline_dir, &eps.to_vector())
+                    || curr_line_dir.approx_eq_eps(&-nline_dir, &eps.to_vector());
 
                 if same_dir {
                     if cv1.approx_eq_eps(&v1, &eps) {
                         curr_line = Some((v2, cv2));
+                        curr_pushed = false;
                     } else if cv1.approx_eq_eps(&v2, &eps) {
                         curr_line = Some((v1, cv2));
+                        curr_pushed = false;
                     } else if cv2.approx_eq_eps(&v1, &eps) {
                         curr_line = Some((v2, cv1));
+                        curr_pushed = false;
                     } else if cv2.approx_eq_eps(&v2, &eps) {
                         curr_line = Some((v1, cv1));
+                        curr_pushed = false;
                     } else {
                         npaths.push((cv1, cv2));
                         curr_line = Some((v1, v2));
+                        curr_pushed = true;
                     }
                 } else {
                     npaths.push((cv1, cv2));
                     curr_line = Some((v1, v2));
+                    curr_pushed = false;
                 }
             }
+        }
+
+        if curr_line.is_some() && !curr_pushed {
+            npaths.push(curr_line.unwrap());
         }
 
         Paths::new(npaths)

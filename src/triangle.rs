@@ -62,12 +62,24 @@ impl Shape for Triangle {
         let v1 = v1 + (v1 - centroid).normalize() * 0.015;
         let v2 = v2 + (v2 - centroid).normalize() * 0.015;
 
+        Paths::new(vec![(v0, v1), (v1, v2), (v2, v0)])
+    }
 
-        Paths::new(vec![
-            (v0, v1),
-            (v1, v2),
-            (v2, v0),
-        ])
+    fn bounding_box(&self) -> Option<crate::AABB<crate::WorldSpace>> {
+        let mut min = WPoint3::new(f64::INFINITY, f64::INFINITY, f64::INFINITY);
+        let mut max = WPoint3::new(f64::NEG_INFINITY, f64::NEG_INFINITY, f64::NEG_INFINITY);
+
+        for vert in &self.verts {
+            min.x = min.x.min(vert.x);
+            min.y = min.y.min(vert.y);
+            min.z = min.z.min(vert.z);
+
+            max.x = max.x.max(vert.x);
+            max.y = max.y.max(vert.y);
+            max.z = max.z.max(vert.z);
+        }
+
+        Some(crate::AABB::new(min, max))
     }
 }
 
@@ -109,10 +121,7 @@ mod test {
 
         assert_eq!(
             tri1.hit_by(&ray1),
-            Some(HitData::new(
-                WPoint3::new(0.25, 0.25, 0.0),
-                2.0
-            ))
+            Some(HitData::new(WPoint3::new(0.25, 0.25, 0.0), 2.0))
         );
 
         assert_eq!(tri1.hit_by(&ray2), None);
@@ -120,10 +129,7 @@ mod test {
 
         assert_eq!(
             tri1.hit_by(&ray4),
-            Some(HitData::new(
-                WPoint3::new(0.1, 0.01, 0.0),
-                2.0
-            ))
+            Some(HitData::new(WPoint3::new(0.1, 0.01, 0.0), 2.0))
         );
     }
 }

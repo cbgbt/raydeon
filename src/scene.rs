@@ -2,7 +2,6 @@ use rayon::prelude::*;
 
 use crate::*;
 
-
 pub struct LookingCamera {
     eye: WPoint3,
     center: WVec3,
@@ -13,15 +12,15 @@ pub struct LookingCamera {
 #[derive(Debug, Copy, Clone)]
 pub struct Camera {
     eye: WPoint3,
-    center: WVec3,
-    up: WVec3,
+    _center: WVec3,
+    _up: WVec3,
 
-    fovy: f64,
+    _fovy: f64,
     width: f64,
     height: f64,
-    aspect: f64,
-    znear: f64,
-    zfar: f64,
+    _aspect: f64,
+    _znear: f64,
+    _zfar: f64,
 
     matrix: Transform3D<f64, WorldSpace, CanvasSpace>,
 }
@@ -34,11 +33,14 @@ impl Camera {
         let s = f.cross(up).normalize();
         let u = s.cross(f).normalize();
 
-        let look_at_matrix = CWTransform::column_major(
-            s.x, u.x, -f.x, eye.x,
-            s.y, u.y, -f.y, eye.y,
-            s.z, u.z, -f.z, eye.z,
-            0.0, 0.0, 0.0, 1.0,
+        let look_at_matrix = CWTransform::from_array(
+            // euclid used to let us specify things in column major order and now it doesn't.
+            // So we're just transposing it here.
+            CWTransform::new(
+                s.x, u.x, -f.x, eye.x, s.y, u.y, -f.y, eye.y, s.z, u.z, -f.z, eye.z, 0.0, 0.0, 0.0,
+                1.0,
+            )
+            .to_array_transposed(),
         )
         .inverse()
         .unwrap();
@@ -48,22 +50,46 @@ impl Camera {
             eye,
             center,
             up,
-            matrix
+            matrix,
         }
     }
 }
 
-fn frustum(l: f64, r: f64, b: f64, t: f64, n: f64, f: f64) -> Transform3D<f64, CameraSpace, CanvasSpace> {
+fn frustum(
+    l: f64,
+    r: f64,
+    b: f64,
+    t: f64,
+    n: f64,
+    f: f64,
+) -> Transform3D<f64, CameraSpace, CanvasSpace> {
     let t1 = 2.0 * n;
     let t2 = r - l;
     let t3 = t - b;
     let t4 = f - n;
 
-    Transform3D::column_major(
-        t1 / t2, 0.0, (r + l) / t2, 0.0,
-        0.0, t1 / t3, (t + b) / t3, 0.0,
-        0.0, 0.0, (-f - n) / t4, (-t1 * f) / t4,
-        0.0, 0.0, -1.0, 0.0,
+    // euclid used to let us specify things in column major order and now it doesn't.
+    // So we're just transposing it here.
+    Transform3D::from_array(
+        Transform3D::<f64, CameraSpace, CanvasSpace>::new(
+            t1 / t2,
+            0.0,
+            (r + l) / t2,
+            0.0,
+            0.0,
+            t1 / t3,
+            (t + b) / t3,
+            0.0,
+            0.0,
+            0.0,
+            (-f - n) / t4,
+            (-t1 * f) / t4,
+            0.0,
+            0.0,
+            -1.0,
+            0.0,
+        )
+        .to_array_transposed(),
     )
 }
 
@@ -73,19 +99,19 @@ impl LookingCamera {
         let ymax = znear * (fovy * std::f64::consts::PI / 360.0).tan();
         let xmax = ymax * aspect;
 
-        let my_frustum = frustum(-xmax, xmax, -ymax, ymax, znear, zfar);
-        let matrix = my_frustum.pre_transform(&self.matrix);
+        let frustum = frustum(-xmax, xmax, -ymax, ymax, znear, zfar);
+        let matrix = self.matrix.then(&frustum);
 
         Camera {
             eye: self.eye,
-            center: self.center,
-            up: self.up,
-            fovy,
+            _center: self.center,
+            _up: self.up,
+            _fovy: fovy,
             width,
             height,
-            aspect,
-            znear,
-            zfar,
+            _aspect: aspect,
+            _znear: znear,
+            _zfar: zfar,
             matrix,
         }
     }
@@ -101,13 +127,10 @@ impl Scene {
     }
 
     fn intersect(&self, ray: Ray) -> Option<HitData> {
-        self.geometry.par_iter()
-            .filter_map(|geom| {
-                geom.hit_by(&ray)
-            })
-            .min_by(|hit1, hit2| {
-                hit1.dist_to.partial_cmp(&hit2.dist_to).unwrap()
-            })
+        self.geometry
+            .par_iter()
+            .filter_map(|geom| geom.hit_by(&ray))
+            .min_by(|hit1, hit2| hit1.dist_to.partial_cmp(&hit2.dist_to).unwrap())
     }
 
     fn visible(&self, camera: &Camera, point: WPoint3) -> bool {
@@ -118,10 +141,8 @@ impl Scene {
             Some(hitdata) => {
                 let diff = (hitdata.dist_to - v.length()).abs();
                 diff < 1.0e-1
-            },
-            None => {
-                true
             }
+            None => true,
         }
     }
 
@@ -135,7 +156,7 @@ impl Scene {
                 npaths.push((p1, p2));
             }
         }
-        
+
         Paths::new(npaths)
     }
 
@@ -156,9 +177,14 @@ impl Scene {
             paths = paths.simplify(1.0e-6);
         }
 
-        let translation = Transform3D::create_translation(1.0, 1.0, 0.0)
-            .post_scale(camera.width / 2.0, camera.height / 2.0, 0.0);
+        let translation = Transform3D::translation(1.0, 1.0, 0.0).then_scale(
+            camera.width / 2.0,
+            camera.height / 2.0,
+            0.0,
+        );
 
-        paths.transform(translation)
+        let paths = paths.transform(translation);
+
+        paths
     }
 }

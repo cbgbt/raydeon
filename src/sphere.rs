@@ -1,4 +1,4 @@
-use crate::{HitData, Paths, Ray, Shape, WPoint3};
+use crate::{HitData, Paths, Ray, Shape, WPoint3, WVec3};
 
 #[derive(Debug, Copy, Clone)]
 #[cfg_attr(test, derive(PartialEq))]
@@ -51,6 +51,12 @@ impl Shape for Sphere {
     fn paths(&self) -> Paths<crate::WorldSpace> {
         unimplemented!()
     }
+
+    fn bounding_box(&self) -> Option<crate::AABB<crate::WorldSpace>> {
+        let min = self.center - WVec3::splat(self.radius);
+        let max = self.center + WVec3::splat(self.radius);
+        Some(crate::AABB::new(min, max))
+    }
 }
 
 #[cfg(test)]
@@ -67,10 +73,7 @@ mod test {
                 WPoint3::new(0.0, 0.0, 0.0),
                 WVec3::new(1.0, 0.0, 0.0)
             )),
-            Some(HitData::new(
-                WPoint3::new(0.5, 0.0, 0.0),
-                0.5,
-            ))
+            Some(HitData::new(WPoint3::new(0.5, 0.0, 0.0), 0.5,))
         );
 
         assert_eq!(
@@ -96,10 +99,7 @@ mod test {
                 WPoint3::new(0.0, 1.0, 0.0),
                 WVec3::new(1.0, 0.0, 0.0)
             )),
-            Some(HitData::new(
-                WPoint3::new(0.5, 1.0, 0.0),
-                0.5,
-            ))
+            Some(HitData::new(WPoint3::new(0.5, 1.0, 0.0), 0.5,))
         );
 
         let sphere3 = Sphere::new(WPoint3::new(0.0, 0.0, 0.0), 1.0);
@@ -109,10 +109,7 @@ mod test {
                 WPoint3::new(0.0, 0.0, 0.0),
                 WVec3::new(1.0, 0.0, 0.0)
             )),
-            Some(HitData::new(
-                WPoint3::new(1.0, 0.0, 0.0),
-                1.0,
-            ))
+            Some(HitData::new(WPoint3::new(1.0, 0.0, 0.0), 1.0,))
         );
 
         assert_eq!(
@@ -120,10 +117,7 @@ mod test {
                 WPoint3::new(0.0, 0.0, 0.0),
                 WVec3::new(-1.0, 0.0, 0.0)
             )),
-            Some(HitData::new(
-                WPoint3::new(-1.0, 0.0, 0.0),
-                1.0,
-            ))
+            Some(HitData::new(WPoint3::new(-1.0, 0.0, 0.0), 1.0,))
         );
     }
 }
