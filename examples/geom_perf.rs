@@ -47,7 +47,8 @@ fn main() -> Result<()> {
     let mut item_group = svg::node::element::Group::new()
         .set("transform", format!("translate(0, {}) scale(1,-1)", height));
 
-    for (p1, p2) in paths {
+    for path in paths {
+        let (p1, p2) = (path.p1, path.p2);
         item_group = item_group.add(
             svg::node::element::Line::new()
                 .set("x1", p1.x)

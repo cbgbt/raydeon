@@ -8,10 +8,15 @@ pub struct Triangle {
     pub verts: [WPoint3; 3],
     pub edges: [WVec3; 3],
     pub plane: Plane,
+    pub tag: usize,
 }
 
 impl Triangle {
     pub fn new(v0: WPoint3, v1: WPoint3, v2: WPoint3) -> Triangle {
+        Self::tagged(v0, v1, v2, 0)
+    }
+
+    pub fn tagged(v0: WPoint3, v1: WPoint3, v2: WPoint3, tag: usize) -> Triangle {
         let verts = [v0, v1, v2];
         let edges = [v1 - v0, v2 - v1, v0 - v2];
         let normal = (v1 - v0).cross(v2 - v0).normalize();
@@ -20,6 +25,7 @@ impl Triangle {
             verts,
             edges,
             plane,
+            tag,
         }
     }
 }
@@ -63,7 +69,11 @@ impl Shape<WorldSpace> for Triangle {
         let v1 = v1 + (v1 - centroid).normalize() * 0.015;
         let v2 = v2 + (v2 - centroid).normalize() * 0.015;
 
-        vec![(v0, v1), (v1, v2), (v2, v0)]
+        vec![
+            LineSegment::tagged(v0, v1, self.tag),
+            LineSegment::tagged(v1, v2, self.tag),
+            LineSegment::tagged(v2, v0, self.tag),
+        ]
     }
 
     fn bounding_box(&self) -> Option<crate::AABB<crate::WorldSpace>> {

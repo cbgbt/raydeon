@@ -14,12 +14,12 @@ pub use scene::{Camera, Scene};
 #[cfg(test)]
 pub(crate) static EPSILON: f64 = 0.004;
 
-#[derive(Debug)]
+#[derive(Debug, Copy, Clone)]
 pub struct WorldSpace;
-#[derive(Debug)]
+#[derive(Debug, Copy, Clone)]
 pub struct CameraSpace;
 
-#[derive(Debug)]
+#[derive(Debug, Copy, Clone)]
 pub struct CanvasSpace;
 
 pub type WVec3 = Vector3D<f64, WorldSpace>;
@@ -36,7 +36,7 @@ pub type CCTransform = Transform3D<f64, CameraSpace, CameraSpace>;
 
 pub trait Shape<Space>: Send + Sync + std::fmt::Debug
 where
-    Space: Sized + Send + Sync + std::fmt::Debug,
+    Space: Sized + Send + Sync + std::fmt::Debug + Copy + Clone,
 {
     fn hit_by(&self, ray: &Ray) -> Option<HitData>;
     fn paths(&self) -> Vec<LineSegment<Space>>;

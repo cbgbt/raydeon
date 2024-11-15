@@ -8,11 +8,16 @@ use crate::{HitData, Ray, Shape, WPoint3, WVec3, WorldSpace, AABB};
 pub struct RectPrism {
     pub min: WVec3,
     pub max: WVec3,
+    pub tag: usize,
 }
 
 impl RectPrism {
     pub fn new(min: WVec3, max: WVec3) -> RectPrism {
-        RectPrism { min, max }
+        Self::tagged(min, max, 0)
+    }
+
+    pub fn tagged(min: WVec3, max: WVec3, tag: usize) -> RectPrism {
+        RectPrism { min, max, tag }
     }
 }
 
@@ -62,18 +67,18 @@ impl Shape<WorldSpace> for RectPrism {
         let p8 = WPoint3::new(x1, y2, z2);
 
         vec![
-            (p1, p2),
-            (p2, p3),
-            (p3, p4),
-            (p4, p1),
-            (p5, p6),
-            (p6, p7),
-            (p7, p8),
-            (p8, p5),
-            (p1, p5),
-            (p2, p6),
-            (p3, p7),
-            (p4, p8),
+            LineSegment::tagged(p1, p2, self.tag),
+            LineSegment::tagged(p2, p3, self.tag),
+            LineSegment::tagged(p3, p4, self.tag),
+            LineSegment::tagged(p4, p1, self.tag),
+            LineSegment::tagged(p5, p6, self.tag),
+            LineSegment::tagged(p6, p7, self.tag),
+            LineSegment::tagged(p7, p8, self.tag),
+            LineSegment::tagged(p8, p5, self.tag),
+            LineSegment::tagged(p1, p5, self.tag),
+            LineSegment::tagged(p2, p6, self.tag),
+            LineSegment::tagged(p3, p7, self.tag),
+            LineSegment::tagged(p4, p8, self.tag),
         ]
     }
 

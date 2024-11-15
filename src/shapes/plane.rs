@@ -19,7 +19,7 @@ impl Plane {
 
 impl Shape<WorldSpace> for Plane {
     fn hit_by(&self, ray: &Ray) -> Option<HitData> {
-        let rdn = (&ray.dir).dot(self.normal);
+        let rdn = ray.dir.dot(self.normal);
         if rdn == 0.0 {
             return None;
         }

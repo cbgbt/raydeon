@@ -1,5 +1,5 @@
 use bvh::BVHTree;
-use path::{simplify_segments, transform_segment};
+use path::simplify_segments;
 use rayon::prelude::*;
 use std::sync::Arc;
 use tracing::info;
@@ -67,9 +67,8 @@ impl Camera {
     /// Chops a line segment into subsegments based on distance from camera
     pub fn chop_segment(&self, segment: &LineSegment<WorldSpace>) -> Vec<LineSegment<WorldSpace>> {
         // linearly interpolate step_size based on closest point to the camera
-        let (p1, p2) = segment;
-        let p1 = p1.to_vector();
-        let p2 = p2.to_vector();
+        let p1 = segment.p1.to_vector();
+        let p2 = segment.p2.to_vector();
         let segment_diff = p2 - p1;
         let midpoint = p1 + (segment_diff / 2.0);
 
@@ -98,7 +97,7 @@ impl Camera {
             1,
         );
         if chunk_count == 1 {
-            return vec![(p1.to_point(), p2.to_point())];
+            return vec![*segment];
         }
 
         let true_chunk_len = segment_length / chunk_count as f64;
@@ -108,9 +107,9 @@ impl Camera {
         let chunk_vec = segment_dir * true_chunk_len;
         (0..chunk_count)
             .map(|segment_ndx| {
-                let p1 = segment.0 + (chunk_vec * (segment_ndx as f64));
+                let p1 = segment.p1 + (chunk_vec * (segment_ndx as f64));
                 let p2 = p1 + chunk_vec;
-                (p1, p2)
+                LineSegment::tagged(p1, p2, segment.tag)
             })
             .collect()
     }
@@ -156,8 +155,8 @@ impl LookingCamera {
         let effective_height = height;
         let znear_width = 2.0 * xmax;
         let znear_height = 2.0 * ymax;
-        let est_min_pix_height = (znear_height / effective_height);
-        let est_min_pix_width = (znear_width / effective_width);
+        let est_min_pix_height = znear_height / effective_height;
+        let est_min_pix_width = znear_width / effective_width;
 
         let min_step_size = f64::min(est_min_pix_height, est_min_pix_width);
 
@@ -197,8 +196,8 @@ pub struct SceneCamera<'s> {
 
 impl<'a> SceneCamera<'a> {
     fn clip_filter(&self, path: &LineSegment<WorldSpace>) -> bool {
-        let (p1, p2) = path;
-        let midpoint = *p1 + ((*p2 - *p1) / 2.0);
+        let (p1, p2) = (path.p1, path.p2);
+        let midpoint = p1 + ((p2 - p1) / 2.0);
         self.scene.visible(self.camera.eye, midpoint)
     }
 
@@ -222,7 +221,7 @@ impl<'a> SceneCamera<'a> {
                 path_group
                     .par_iter()
                     .filter(|path| {
-                        let close_enough = (path.0.to_vector() - self.camera.eye.to_vector())
+                        let close_enough = (path.p1.to_vector() - self.camera.eye.to_vector())
                             .length()
                             < self.camera.zfar;
                         close_enough && self.clip_filter(path)
@@ -231,7 +230,7 @@ impl<'a> SceneCamera<'a> {
                     .collect::<Vec<_>>()
             })
             .flat_map(|path_group| simplify_segments(&path_group, 1.0e-6))
-            .filter_map(|path| transform_segment(path, &transformation))
+            .filter_map(|path| path.transform(&transformation))
             .collect();
 
         info!("{} paths remain after clipping", paths.len());

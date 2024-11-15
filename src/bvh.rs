@@ -1,4 +1,3 @@
-use crate::shapes::RectPrism;
 use crate::{HitData, Ray, Shape, WorldSpace, AABB};
 use euclid::Point3D;
 use rayon::prelude::*;
@@ -15,7 +14,7 @@ pub(crate) enum Axis {
 #[derive(Debug)]
 pub(crate) struct BVHTree<Space>
 where
-    Space: Send + Sync + Sized + std::fmt::Debug + 'static,
+    Space: Copy + Send + Sync + Sized + std::fmt::Debug + 'static,
 {
     aabb: AABB<Space>,
     root: Option<Node<Space>>,
@@ -24,7 +23,7 @@ where
 
 impl<Space> BVHTree<Space>
 where
-    Space: Send + Sync + Sized + std::fmt::Debug + 'static,
+    Space: Copy + Send + Sync + Sized + std::fmt::Debug + 'static,
 {
     pub(crate) fn new(shapes: &[Arc<dyn Shape<Space>>]) -> Self {
         info!(
@@ -34,7 +33,7 @@ where
         let mut bounded = Vec::with_capacity(shapes.len());
         let mut unbounded = Vec::with_capacity(shapes.len());
 
-        for shape in shapes.into_iter() {
+        for shape in shapes.iter() {
             let aabb = shape.bounding_box();
 
             let shape = Arc::clone(shape);
@@ -65,7 +64,7 @@ impl BVHTree<WorldSpace> {
             self.intersects_unbounded_volume(ray),
         ]
         .into_iter()
-        .filter_map(std::convert::identity)
+        .flatten()
         .min_by(|hit1, hit2| hit1.dist_to.partial_cmp(&hit2.dist_to).unwrap())
     }
 
@@ -89,9 +88,9 @@ impl BVHTree<WorldSpace> {
 }
 
 #[derive(Debug)]
-pub(crate) enum Node<Space>
+enum Node<Space>
 where
-    Space: Send + Sync + Sized + std::fmt::Debug + 'static,
+    Space: Copy + Send + Sync + Sized + std::fmt::Debug + 'static,
 {
     Parent(ParentNode<Space>),
     Leaf(LeafNode<Space>),
@@ -100,7 +99,7 @@ where
 #[derive(Debug)]
 struct ParentNode<Space>
 where
-    Space: Send + Sync + Sized + std::fmt::Debug + 'static,
+    Space: Copy + Send + Sync + Sized + std::fmt::Debug + 'static,
 {
     axis: Axis,
     point: f64,
@@ -162,21 +161,18 @@ impl ParentNode<WorldSpace> {
 #[derive(Debug)]
 struct LeafNode<Space>
 where
-    Space: Send + Sync + Sized + std::fmt::Debug + 'static,
+    Space: Copy + Send + Sync + Sized + std::fmt::Debug + 'static,
 {
     shapes: Vec<Arc<BoundedShape<Space>>>,
 }
 
+type PartitionedSegments<Space> = (Vec<Arc<BoundedShape<Space>>>, Vec<Arc<BoundedShape<Space>>>);
+
 impl<Space> LeafNode<Space>
 where
-    Space: Send + Sync + Sized + std::fmt::Debug + 'static,
+    Space: Copy + Send + Sync + Sized + std::fmt::Debug + 'static,
 {
-    fn partition(
-        &self,
-        best: u64,
-        best_axis: Axis,
-        best_point: f64,
-    ) -> (Vec<Arc<BoundedShape<Space>>>, Vec<Arc<BoundedShape<Space>>>) {
+    fn partition(&self, best: u64, best_axis: Axis, best_point: f64) -> PartitionedSegments<Space> {
         let mut left = Vec::with_capacity(best as usize);
         let mut right = Vec::with_capacity(best as usize);
         for shape in &self.shapes {
@@ -222,7 +218,7 @@ impl LeafNode<WorldSpace> {
 
 impl<Space> Node<Space>
 where
-    Space: Send + Sync + Sized + std::fmt::Debug + 'static,
+    Space: Copy + Send + Sync + Sized + std::fmt::Debug + 'static,
 {
     fn new(shapes: Vec<Arc<BoundedShape<Space>>>) -> (Self, usize) {
         let mut node = Self::Leaf(LeafNode { shapes });
@@ -309,7 +305,7 @@ impl Node<WorldSpace> {
 #[derive(Debug)]
 struct BoundedShape<Space>
 where
-    Space: Send + Sync + Sized + std::fmt::Debug + 'static,
+    Space: Copy + Send + Sync + Sized + std::fmt::Debug + 'static,
 {
     shape: Arc<dyn Shape<Space>>,
     aabb: AABB<Space>,
@@ -317,7 +313,7 @@ where
 
 fn bounding_box_for_shapes<Space>(shapes: &[Arc<BoundedShape<Space>>]) -> AABB<Space>
 where
-    Space: Send + Sync + Sized + std::fmt::Debug + 'static,
+    Space: Copy + Send + Sync + Sized + std::fmt::Debug + 'static,
 {
     let aabb = AABB::new(Point3D::splat(f64::MAX), Point3D::splat(f64::MIN));
     let bounding_boxes = shapes.iter().map(|shape| shape.aabb).collect::<Vec<_>>();
@@ -335,7 +331,7 @@ where
 
 fn partition_bounding_box<Space>(axis: Axis, aabb: AABB<Space>, point: f64) -> (bool, bool)
 where
-    Space: Send + Sync + Sized + std::fmt::Debug + 'static,
+    Space: Copy + Send + Sync + Sized + std::fmt::Debug + 'static,
 {
     match axis {
         Axis::X => (aabb.min.x <= point, aabb.max.x >= point),
@@ -361,7 +357,7 @@ fn median(nums: &[f64]) -> f64 {
     match len {
         0 => 0.0,
         n if n % 2 == 1 => nums[len / 2],
-        n => {
+        _ => {
             let a = nums[len / 2 - 1];
             let b = nums[len / 2 - 1];
             (a + b) / 2.0
