@@ -1,4 +1,5 @@
-use crate::{HitData, Paths, Ray, Shape, WPoint3};
+use crate::path::LineSegment;
+use crate::{HitData, Ray, Shape, WPoint3, WVec3, WorldSpace};
 
 #[derive(Debug, Copy, Clone)]
 #[cfg_attr(test, derive(PartialEq))]
@@ -23,7 +24,7 @@ impl Sphere {
     }
 }
 
-impl Shape for Sphere {
+impl Shape<WorldSpace> for Sphere {
     fn hit_by(&self, ray: &Ray) -> Option<HitData> {
         let l_vec = self.center - ray.point;
         let t_ca = l_vec.dot(ray.dir);
@@ -48,8 +49,14 @@ impl Shape for Sphere {
         Some(HitData::new(hit_point, t))
     }
 
-    fn paths(&self) -> Paths<crate::WorldSpace> {
+    fn paths(&self) -> Vec<LineSegment<WorldSpace>> {
         unimplemented!()
+    }
+
+    fn bounding_box(&self) -> Option<crate::AABB<crate::WorldSpace>> {
+        let min = self.center - WVec3::splat(self.radius);
+        let max = self.center + WVec3::splat(self.radius);
+        Some(crate::AABB::new(min, max))
     }
 }
 
@@ -67,10 +74,7 @@ mod test {
                 WPoint3::new(0.0, 0.0, 0.0),
                 WVec3::new(1.0, 0.0, 0.0)
             )),
-            Some(HitData::new(
-                WPoint3::new(0.5, 0.0, 0.0),
-                0.5,
-            ))
+            Some(HitData::new(WPoint3::new(0.5, 0.0, 0.0), 0.5,))
         );
 
         assert_eq!(
@@ -96,10 +100,7 @@ mod test {
                 WPoint3::new(0.0, 1.0, 0.0),
                 WVec3::new(1.0, 0.0, 0.0)
             )),
-            Some(HitData::new(
-                WPoint3::new(0.5, 1.0, 0.0),
-                0.5,
-            ))
+            Some(HitData::new(WPoint3::new(0.5, 1.0, 0.0), 0.5,))
         );
 
         let sphere3 = Sphere::new(WPoint3::new(0.0, 0.0, 0.0), 1.0);
@@ -109,10 +110,7 @@ mod test {
                 WPoint3::new(0.0, 0.0, 0.0),
                 WVec3::new(1.0, 0.0, 0.0)
             )),
-            Some(HitData::new(
-                WPoint3::new(1.0, 0.0, 0.0),
-                1.0,
-            ))
+            Some(HitData::new(WPoint3::new(1.0, 0.0, 0.0), 1.0,))
         );
 
         assert_eq!(
@@ -120,10 +118,7 @@ mod test {
                 WPoint3::new(0.0, 0.0, 0.0),
                 WVec3::new(-1.0, 0.0, 0.0)
             )),
-            Some(HitData::new(
-                WPoint3::new(-1.0, 0.0, 0.0),
-                1.0,
-            ))
+            Some(HitData::new(WPoint3::new(-1.0, 0.0, 0.0), 1.0,))
         );
     }
 }

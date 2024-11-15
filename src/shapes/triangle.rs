@@ -1,5 +1,6 @@
-use crate::plane::Plane;
-use crate::{HitData, Paths, Ray, Shape, WPoint3, WVec3};
+use super::plane::Plane;
+use crate::path::LineSegment;
+use crate::{HitData, Ray, Shape, WPoint3, WVec3, WorldSpace};
 
 #[derive(Debug, Copy, Clone)]
 #[cfg_attr(test, derive(PartialEq))]
@@ -23,7 +24,7 @@ impl Triangle {
     }
 }
 
-impl Shape for Triangle {
+impl Shape<WorldSpace> for Triangle {
     fn hit_by(&self, ray: &Ray) -> Option<HitData> {
         let p_hit = self.plane.hit_by(ray);
 
@@ -52,7 +53,7 @@ impl Shape for Triangle {
         }
     }
 
-    fn paths(&self) -> Paths<crate::WorldSpace> {
+    fn paths(&self) -> Vec<LineSegment<WorldSpace>> {
         let v0 = self.verts[0];
         let v1 = self.verts[1];
         let v2 = self.verts[2];
@@ -62,12 +63,24 @@ impl Shape for Triangle {
         let v1 = v1 + (v1 - centroid).normalize() * 0.015;
         let v2 = v2 + (v2 - centroid).normalize() * 0.015;
 
+        vec![(v0, v1), (v1, v2), (v2, v0)]
+    }
 
-        Paths::new(vec![
-            (v0, v1),
-            (v1, v2),
-            (v2, v0),
-        ])
+    fn bounding_box(&self) -> Option<crate::AABB<crate::WorldSpace>> {
+        let mut min = WPoint3::new(f64::INFINITY, f64::INFINITY, f64::INFINITY);
+        let mut max = WPoint3::new(f64::NEG_INFINITY, f64::NEG_INFINITY, f64::NEG_INFINITY);
+
+        for vert in &self.verts {
+            min.x = min.x.min(vert.x);
+            min.y = min.y.min(vert.y);
+            min.z = min.z.min(vert.z);
+
+            max.x = max.x.max(vert.x);
+            max.y = max.y.max(vert.y);
+            max.z = max.z.max(vert.z);
+        }
+
+        Some(crate::AABB::new(min, max))
     }
 }
 
@@ -109,10 +122,7 @@ mod test {
 
         assert_eq!(
             tri1.hit_by(&ray1),
-            Some(HitData::new(
-                WPoint3::new(0.25, 0.25, 0.0),
-                2.0
-            ))
+            Some(HitData::new(WPoint3::new(0.25, 0.25, 0.0), 2.0))
         );
 
         assert_eq!(tri1.hit_by(&ray2), None);
@@ -120,10 +130,7 @@ mod test {
 
         assert_eq!(
             tri1.hit_by(&ray4),
-            Some(HitData::new(
-                WPoint3::new(0.1, 0.01, 0.0),
-                2.0
-            ))
+            Some(HitData::new(WPoint3::new(0.1, 0.01, 0.0), 2.0))
         );
     }
 }

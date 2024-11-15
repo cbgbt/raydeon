@@ -1,4 +1,5 @@
-use crate::{HitData, Paths, Ray, Shape, WPoint3, WVec3};
+use crate::path::LineSegment;
+use crate::{HitData, Ray, Shape, WPoint3, WVec3, WorldSpace};
 
 #[derive(Debug, Copy, Clone)]
 #[cfg_attr(test, derive(PartialEq))]
@@ -16,7 +17,7 @@ impl Plane {
     }
 }
 
-impl Shape for Plane {
+impl Shape<WorldSpace> for Plane {
     fn hit_by(&self, ray: &Ray) -> Option<HitData> {
         let rdn = (&ray.dir).dot(self.normal);
         if rdn == 0.0 {
@@ -33,8 +34,12 @@ impl Shape for Plane {
         Some(HitData::new(hit_point, t))
     }
 
-    fn paths(&self) -> Paths<crate::WorldSpace> {
+    fn paths(&self) -> Vec<LineSegment<WorldSpace>> {
         unimplemented!()
+    }
+
+    fn bounding_box(&self) -> Option<crate::AABB<crate::WorldSpace>> {
+        None
     }
 }
 
@@ -51,10 +56,7 @@ mod test {
                 WPoint3::new(0.0, 0.0, 0.0),
                 WVec3::new(1.0, 0.0, 0.0)
             )),
-            Some(HitData::new(
-                WPoint3::new(1.0, 0.0, 0.0),
-                1.0,
-            ))
+            Some(HitData::new(WPoint3::new(1.0, 0.0, 0.0), 1.0,))
         );
 
         assert_eq!(
@@ -62,10 +64,7 @@ mod test {
                 WPoint3::new(0.0, 1.0, 0.0),
                 WVec3::new(1.0, -1.0, 0.0)
             )),
-            Some(HitData::new(
-                WPoint3::new(1.0, 0.0, 0.0),
-                f64::sqrt(2.0),
-            ))
+            Some(HitData::new(WPoint3::new(1.0, 0.0, 0.0), f64::sqrt(2.0),))
         );
 
         assert_eq!(
