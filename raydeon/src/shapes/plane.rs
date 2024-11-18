@@ -1,5 +1,5 @@
-use crate::path::LineSegment;
-use crate::{HitData, Ray, Shape, WPoint3, WVec3, WorldSpace};
+use crate::path::LineSegment3D;
+use crate::{Camera, HitData, Ray, Shape, WPoint3, WVec3, WorldSpace};
 
 #[derive(Debug, Copy, Clone)]
 #[cfg_attr(test, derive(PartialEq))]
@@ -34,11 +34,11 @@ impl Shape<WorldSpace> for Plane {
         Some(HitData::new(hit_point, t))
     }
 
-    fn paths(&self) -> Vec<LineSegment<WorldSpace>> {
+    fn paths(&self, _cam: &Camera) -> Vec<LineSegment3D<WorldSpace>> {
         unimplemented!()
     }
 
-    fn bounding_box(&self) -> Option<crate::AABB<crate::WorldSpace>> {
+    fn bounding_box(&self) -> Option<crate::AABB3<crate::WorldSpace>> {
         None
     }
 }

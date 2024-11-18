@@ -1,6 +1,6 @@
 use super::plane::Plane;
-use crate::path::LineSegment;
-use crate::{HitData, Ray, Shape, WPoint3, WVec3, WorldSpace};
+use crate::path::LineSegment3D;
+use crate::{Camera, HitData, Ray, Shape, WPoint3, WVec3, WorldSpace};
 
 #[derive(Debug, Copy, Clone)]
 #[cfg_attr(test, derive(PartialEq))]
@@ -59,7 +59,7 @@ impl Shape<WorldSpace> for Triangle {
         }
     }
 
-    fn paths(&self) -> Vec<LineSegment<WorldSpace>> {
+    fn paths(&self, _cam: &Camera) -> Vec<LineSegment3D<WorldSpace>> {
         let v0 = self.verts[0];
         let v1 = self.verts[1];
         let v2 = self.verts[2];
@@ -70,13 +70,13 @@ impl Shape<WorldSpace> for Triangle {
         let v2 = v2 + (v2 - centroid).normalize() * 0.015;
 
         vec![
-            LineSegment::tagged(v0, v1, self.tag),
-            LineSegment::tagged(v1, v2, self.tag),
-            LineSegment::tagged(v2, v0, self.tag),
+            LineSegment3D::tagged(v0, v1, self.tag),
+            LineSegment3D::tagged(v1, v2, self.tag),
+            LineSegment3D::tagged(v2, v0, self.tag),
         ]
     }
 
-    fn bounding_box(&self) -> Option<crate::AABB<crate::WorldSpace>> {
+    fn bounding_box(&self) -> Option<crate::AABB3<crate::WorldSpace>> {
         let mut min = WPoint3::new(f64::INFINITY, f64::INFINITY, f64::INFINITY);
         let mut max = WPoint3::new(f64::NEG_INFINITY, f64::NEG_INFINITY, f64::NEG_INFINITY);
 
@@ -90,7 +90,7 @@ impl Shape<WorldSpace> for Triangle {
             max.z = max.z.max(vert.z);
         }
 
-        Some(crate::AABB::new(min, max))
+        Some(crate::AABB3::new(min, max))
     }
 }
 

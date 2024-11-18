@@ -1,7 +1,7 @@
 use collision::Continuous;
 
-use crate::path::LineSegment;
-use crate::{HitData, Ray, Shape, WPoint3, WVec3, WorldSpace, AABB};
+use crate::path::LineSegment3D;
+use crate::{Camera, HitData, Ray, Shape, WPoint3, WVec3, WorldSpace, AABB3};
 
 #[derive(Debug, Copy, Clone)]
 #[cfg_attr(test, derive(PartialEq))]
@@ -21,8 +21,8 @@ impl RectPrism {
     }
 }
 
-impl From<AABB<WorldSpace>> for RectPrism {
-    fn from(value: AABB<WorldSpace>) -> Self {
+impl From<AABB3<WorldSpace>> for RectPrism {
+    fn from(value: AABB3<WorldSpace>) -> Self {
         Self::new(value.min.to_vector(), value.max.to_vector())
     }
 }
@@ -48,7 +48,7 @@ impl Shape<WorldSpace> for RectPrism {
         }
     }
 
-    fn paths(&self) -> Vec<LineSegment<WorldSpace>> {
+    fn paths(&self, _cam: &Camera) -> Vec<LineSegment3D<WorldSpace>> {
         let expand = (self.max - self.min).normalize() * 0.0015;
         let pathmin = self.min - expand;
         let pathmax = self.max + expand;
@@ -67,23 +67,23 @@ impl Shape<WorldSpace> for RectPrism {
         let p8 = WPoint3::new(x1, y2, z2);
 
         vec![
-            LineSegment::tagged(p1, p2, self.tag),
-            LineSegment::tagged(p2, p3, self.tag),
-            LineSegment::tagged(p3, p4, self.tag),
-            LineSegment::tagged(p4, p1, self.tag),
-            LineSegment::tagged(p5, p6, self.tag),
-            LineSegment::tagged(p6, p7, self.tag),
-            LineSegment::tagged(p7, p8, self.tag),
-            LineSegment::tagged(p8, p5, self.tag),
-            LineSegment::tagged(p1, p5, self.tag),
-            LineSegment::tagged(p2, p6, self.tag),
-            LineSegment::tagged(p3, p7, self.tag),
-            LineSegment::tagged(p4, p8, self.tag),
+            LineSegment3D::tagged(p1, p2, self.tag),
+            LineSegment3D::tagged(p2, p3, self.tag),
+            LineSegment3D::tagged(p3, p4, self.tag),
+            LineSegment3D::tagged(p4, p1, self.tag),
+            LineSegment3D::tagged(p5, p6, self.tag),
+            LineSegment3D::tagged(p6, p7, self.tag),
+            LineSegment3D::tagged(p7, p8, self.tag),
+            LineSegment3D::tagged(p8, p5, self.tag),
+            LineSegment3D::tagged(p1, p5, self.tag),
+            LineSegment3D::tagged(p2, p6, self.tag),
+            LineSegment3D::tagged(p3, p7, self.tag),
+            LineSegment3D::tagged(p4, p8, self.tag),
         ]
     }
 
-    fn bounding_box(&self) -> Option<crate::AABB<crate::WorldSpace>> {
-        Some(crate::AABB::new(self.min.to_point(), self.max.to_point()))
+    fn bounding_box(&self) -> Option<crate::AABB3<crate::WorldSpace>> {
+        Some(crate::AABB3::new(self.min.to_point(), self.max.to_point()))
     }
 }
 

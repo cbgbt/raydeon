@@ -1,0 +1,19 @@
+[package]
+name = "raydeon"
+version = "0.2.0"
+authors = ["cbgbt <cbgbt@cabbage.bot>"]
+edition = "2021"
+
+[dependencies]
+cgmath.workspace = true
+collision.workspace = true
+euclid.workspace = true
+log.workspace = true
+rayon.workspace = true
+tracing = { workspace = true, features = ["log"] }
+
+[dev-dependencies]
+anyhow.workspace = true
+env_logger.workspace = true
+float-cmp.workspace = true
+svg.workspace = true

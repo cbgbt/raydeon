@@ -1,19 +1,20 @@
-use anyhow::{Context, Result};
+use std::sync::Arc;
+
 use raydeon::shapes::Triangle;
 use raydeon::{Camera, Scene, WPoint3, WVec3};
 
-fn main() -> Result<()> {
+fn main() {
     env_logger::Builder::from_default_env()
         .format_timestamp_nanos()
         .init();
 
     let scene = Scene::new(vec![
-        Box::new(Triangle::new(
+        Arc::new(Triangle::new(
             WPoint3::new(0.0, 0.0, 0.0),
             WPoint3::new(0.0, 0.0, 1.0),
             WPoint3::new(1.0, 0.0, 1.0),
         )),
-        Box::new(Triangle::new(
+        Arc::new(Triangle::new(
             WPoint3::new(0.25, 0.25, 0.0),
             WPoint3::new(0.0, 0.25, 1.0),
             WPoint3::new(-0.65, 0.25, 1.0),
@@ -71,5 +72,5 @@ fn main() -> Result<()> {
 
     svg_doc = svg_doc.add(item_group);
 
-    svg::save("triangles.svg", &svg_doc).context("Failed to write svg")
+    println!("{}", svg_doc);
 }

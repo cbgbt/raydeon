@@ -1,11 +1,13 @@
 use bvh::BVHTree;
-use path::simplify_segments;
+use euclid::{Transform3D, Vector3D};
+use path::{simplify_3d_segments, LineSegment2D};
 use rayon::prelude::*;
 use std::sync::Arc;
 use tracing::info;
 
 use crate::*;
 
+#[derive(Debug, Copy, Clone)]
 pub struct LookingCamera {
     eye: WPoint3,
     center: WVec3,
@@ -65,7 +67,10 @@ impl Camera {
     }
 
     /// Chops a line segment into subsegments based on distance from camera
-    pub fn chop_segment(&self, segment: &LineSegment<WorldSpace>) -> Vec<LineSegment<WorldSpace>> {
+    pub fn chop_segment(
+        &self,
+        segment: &LineSegment3D<WorldSpace>,
+    ) -> Vec<LineSegment3D<WorldSpace>> {
         // linearly interpolate step_size based on closest point to the camera
         let p1 = segment.p1.to_vector();
         let p2 = segment.p2.to_vector();
@@ -109,7 +114,7 @@ impl Camera {
             .map(|segment_ndx| {
                 let p1 = segment.p1 + (chunk_vec * (segment_ndx as f64));
                 let p2 = p1 + chunk_vec;
-                LineSegment::tagged(p1, p2, segment.tag)
+                LineSegment3D::tagged(p1, p2, segment.tag)
             })
             .collect()
     }
@@ -190,24 +195,24 @@ impl LookingCamera {
 pub struct SceneCamera<'s> {
     camera: Camera,
     scene: &'s Scene,
-    paths: Vec<Vec<LineSegment<WorldSpace>>>,
+    paths: Vec<Vec<LineSegment3D<WorldSpace>>>,
     path_count: usize,
 }
 
 impl<'a> SceneCamera<'a> {
-    fn clip_filter(&self, path: &LineSegment<WorldSpace>) -> bool {
+    fn clip_filter(&self, path: &LineSegment3D<WorldSpace>) -> bool {
         let (p1, p2) = (path.p1, path.p2);
         let midpoint = p1 + ((p2 - p1) / 2.0);
         self.scene.visible(self.camera.eye, midpoint)
     }
 
-    pub fn render(&self) -> Vec<LineSegment<CameraSpace>> {
+    pub fn render(&self) -> Vec<LineSegment2D<CameraSpace>> {
         info!(
             "Clipping occluded and distant segment chunks, started with {} segments",
             self.path_count
         );
 
-        let transformation: Transform3D<f64, WorldSpace, CameraSpace> = self
+        let transformation: Transform3<WorldSpace, CameraSpace> = self
             .camera
             .matrix
             .then_translate(Vector3D::new(1.0, 1.0, 0.0))
@@ -229,8 +234,9 @@ impl<'a> SceneCamera<'a> {
                     .cloned()
                     .collect::<Vec<_>>()
             })
-            .flat_map(|path_group| simplify_segments(&path_group, 1.0e-6))
+            .flat_map(|path_group| simplify_3d_segments(&path_group, 1.0e-6))
             .filter_map(|path| path.transform(&transformation))
+            .map(LineSegment3D::xy)
             .collect();
 
         info!("{} paths remain after clipping", paths.len());
@@ -246,18 +252,17 @@ pub struct Scene {
 }
 
 impl Scene {
-    pub fn new(geometry: Vec<Box<dyn Shape<WorldSpace>>>) -> Scene {
-        let geometry: Vec<_> = geometry.into_iter().map(Arc::from).collect();
+    pub fn new(geometry: Vec<Arc<dyn Shape<WorldSpace>>>) -> Scene {
         let bvh = BVHTree::new(&geometry);
         Scene { geometry, bvh }
     }
 
     pub fn attach_camera(&self, camera: Camera) -> SceneCamera {
         info!("Caching line segment chunks based on new camera attachment");
-        let paths: Vec<Vec<LineSegment<WorldSpace>>> = self
+        let paths: Vec<Vec<LineSegment3D<WorldSpace>>> = self
             .geometry
             .par_iter()
-            .map(|s| s.paths())
+            .map(|s| s.paths(&camera))
             .flat_map(|paths| {
                 paths
                     .par_iter()

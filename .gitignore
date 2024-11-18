@@ -2,4 +2,9 @@ Cargo.lock
 build
 target
 *.svg
-
+**.png
+todo.md
+dist/
+.ruff_cache/
+.pytest_cache/
+.venv/

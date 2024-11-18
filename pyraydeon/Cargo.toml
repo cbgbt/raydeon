@@ -1,0 +1,13 @@
+[package]
+name = "pyraydeon"
+version = "0.1.0"
+edition = "2021"
+publish = false
+
+[lib]
+name = "pyraydeon"
+crate-type = ["cdylib"]
+
+[dependencies]
+pyo3 = { workspace = true, features = ["extension-module"] }
+raydeon.workspace = true

@@ -1,4 +1,4 @@
-use crate::{HitData, Ray, Shape, WorldSpace, AABB};
+use crate::{HitData, Ray, Shape, WorldSpace, AABB3};
 use euclid::Point3D;
 use rayon::prelude::*;
 use std::sync::Arc;
@@ -16,7 +16,7 @@ pub(crate) struct BVHTree<Space>
 where
     Space: Copy + Send + Sync + Sized + std::fmt::Debug + 'static,
 {
-    aabb: AABB<Space>,
+    aabb: AABB3<Space>,
     root: Option<Node<Space>>,
     unbounded: Vec<Arc<dyn Shape<Space>>>,
 }
@@ -308,14 +308,14 @@ where
     Space: Copy + Send + Sync + Sized + std::fmt::Debug + 'static,
 {
     shape: Arc<dyn Shape<Space>>,
-    aabb: AABB<Space>,
+    aabb: AABB3<Space>,
 }
 
-fn bounding_box_for_shapes<Space>(shapes: &[Arc<BoundedShape<Space>>]) -> AABB<Space>
+fn bounding_box_for_shapes<Space>(shapes: &[Arc<BoundedShape<Space>>]) -> AABB3<Space>
 where
     Space: Copy + Send + Sync + Sized + std::fmt::Debug + 'static,
 {
-    let aabb = AABB::new(Point3D::splat(f64::MAX), Point3D::splat(f64::MIN));
+    let aabb = AABB3::new(Point3D::splat(f64::MAX), Point3D::splat(f64::MIN));
     let bounding_boxes = shapes.iter().map(|shape| shape.aabb).collect::<Vec<_>>();
 
     bounding_boxes.into_par_iter().reduce(
@@ -324,12 +324,12 @@ where
             let min = a.min.min(b.min);
             let max = a.max.max(b.max);
 
-            AABB::new(min, max)
+            AABB3::new(min, max)
         },
     )
 }
 
-fn partition_bounding_box<Space>(axis: Axis, aabb: AABB<Space>, point: f64) -> (bool, bool)
+fn partition_bounding_box<Space>(axis: Axis, aabb: AABB3<Space>, point: f64) -> (bool, bool)
 where
     Space: Copy + Send + Sync + Sized + std::fmt::Debug + 'static,
 {
@@ -340,7 +340,7 @@ where
     }
 }
 
-fn bounding_box_intersects(aabb: AABB<WorldSpace>, ray: Ray) -> (f64, f64) {
+fn bounding_box_intersects(aabb: AABB3<WorldSpace>, ray: Ray) -> (f64, f64) {
     let v1 = (aabb.min - ray.point).component_div(ray.dir);
     let v2 = (aabb.max - ray.point).component_div(ray.dir);
 

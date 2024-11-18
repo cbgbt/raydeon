@@ -38,10 +38,7 @@ pub struct HitData {
 
 impl HitData {
     pub fn new(hit_point: WPoint3, dist_to: f64) -> HitData {
-        HitData {
-            hit_point,
-            dist_to,
-        }
+        HitData { hit_point, dist_to }
     }
 }
 
@@ -61,7 +58,6 @@ impl ApproxEq for &HitData {
 
     fn approx_eq<M: Into<Self::Margin>>(self, other: Self, margin: M) -> bool {
         let margin = margin.into();
-        self.hit_point.approx_eq(&other.hit_point)
-            && self.dist_to.approx_eq(other.dist_to, margin)
+        self.hit_point.approx_eq(&other.hit_point) && self.dist_to.approx_eq(other.dist_to, margin)
     }
 }
