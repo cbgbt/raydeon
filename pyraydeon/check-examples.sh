@@ -22,6 +22,8 @@ if [ "$ALL_TOOLS_FOUND" = false ]; then
     exit 1
 fi
 
+uv --project ${SCRIPT_DIR} run --reinstall python -c 'print("Reinstalled dependencies")'
+
 for example in ${SCRIPT_DIR}/examples/*.py; do
     example_name=$(basename "$example" .py)
 
