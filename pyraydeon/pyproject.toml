@@ -4,6 +4,7 @@ build-backend = "maturin"
 
 [project]
 name = "pyraydeon"
+version = "0.1.0-alpha"
 requires-python = ">=3.9"
 dependencies = []
 classifiers = [

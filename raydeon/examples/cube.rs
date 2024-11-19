@@ -1,7 +1,6 @@
-use std::sync::Arc;
-
 use raydeon::shapes::RectPrism;
 use raydeon::{Camera, Scene, WPoint3, WVec3};
+use std::sync::Arc;
 
 fn main() {
     env_logger::Builder::from_default_env()
