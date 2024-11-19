@@ -1,5 +1,5 @@
 use super::Geometry;
-use crate::linear::Point3;
+use crate::linear::{Point3, Vec3};
 use pyo3::prelude::*;
 use raydeon::WorldSpace;
 use std::sync::Arc;
@@ -25,14 +25,22 @@ impl From<Arc<raydeon::shapes::RectPrism>> for RectPrism {
 impl RectPrism {
     #[new]
     #[pyo3(signature = (min, max, tag=0))]
-    fn new(min: &Point3, max: &Point3, tag: usize) -> (Self, Geometry) {
+    fn new(
+        min: &Bound<'_, PyAny>,
+        max: &Bound<'_, PyAny>,
+        tag: usize,
+    ) -> PyResult<(Self, Geometry)> {
+        let min: Vec3 = min.try_into()?;
+        let max: Vec3 = max.try_into()?;
+
         let shape = Arc::new(raydeon::shapes::RectPrism::tagged(
-            min.to_vector().cast_unit(),
-            max.to_vector().cast_unit(),
+            min.cast_unit(),
+            max.cast_unit(),
             tag,
         ));
         let geom = Geometry::native(Arc::clone(&shape) as Arc<dyn raydeon::Shape<WorldSpace>>);
-        (Self(shape), geom)
+
+        Ok((Self(shape), geom))
     }
 }
 
@@ -57,7 +65,16 @@ impl From<Arc<raydeon::shapes::Triangle>> for Tri {
 impl Tri {
     #[new]
     #[pyo3(signature = (p1, p2, p3, tag=0))]
-    fn new(p1: &Point3, p2: &Point3, p3: &Point3, tag: usize) -> (Self, Geometry) {
+    fn new(
+        p1: &Bound<'_, PyAny>,
+        p2: &Bound<'_, PyAny>,
+        p3: &Bound<'_, PyAny>,
+        tag: usize,
+    ) -> PyResult<(Self, Geometry)> {
+        let p1: Point3 = p1.try_into()?;
+        let p2: Point3 = p2.try_into()?;
+        let p3: Point3 = p3.try_into()?;
+
         let shape = Arc::new(raydeon::shapes::Triangle::tagged(
             p1.cast_unit(),
             p2.cast_unit(),
@@ -65,6 +82,6 @@ impl Tri {
             tag,
         ));
         let geom = Geometry::native(Arc::clone(&shape) as Arc<dyn raydeon::Shape<WorldSpace>>);
-        (Self(shape), geom)
+        Ok((Self(shape), geom))
     }
 }

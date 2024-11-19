@@ -4,9 +4,11 @@ build-backend = "maturin"
 
 [project]
 name = "pyraydeon"
-version = "0.1.0-alpha"
+version = "0.1.0-alpha3"
 requires-python = ">=3.9"
-dependencies = []
+dependencies = [
+    "numpy",
+]
 classifiers = [
     "Programming Language :: Rust",
     "Programming Language :: Python :: Implementation :: CPython",

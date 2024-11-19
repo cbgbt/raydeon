@@ -3,7 +3,7 @@ import svg
 from pyraydeon import Camera, Point3, Scene, Tri, Vec3, Geometry
 
 
-class CustomObject(Geometry):
+class CustomTriangle(Geometry):
     def __init__(self, p1, p2, p3):
         self.tri = Tri(p1, p2, p3)
 
@@ -19,7 +19,7 @@ class CustomObject(Geometry):
 
 scene = Scene(
     [
-        CustomObject(
+        CustomTriangle(
             Point3(0, 0, 0),
             Point3(0, 0, 1),
             Point3(1, 0, 1),
@@ -60,10 +60,10 @@ backing_rect = svg.Rect(
 )
 svg_lines = [
     svg.Line(
-        x1=f"{path.p1.x}",
-        y1=f"{path.p1.y}",
-        x2=f"{path.p2.x}",
-        y2=f"{path.p2.y}",
+        x1=f"{path.p1[0]}",
+        y1=f"{path.p1[1]}",
+        x2=f"{path.p2[0]}",
+        y2=f"{path.p2[1]}",
         stroke_width="0.7mm",
         stroke="black",
     )

@@ -1,5 +1,6 @@
 use std::sync::Arc;
 
+use numpy::PyArray1;
 use pyo3::prelude::*;
 use raydeon::WorldSpace;
 
@@ -11,8 +12,15 @@ pywrap!(Camera, raydeon::Camera);
 #[pymethods]
 impl Camera {
     #[staticmethod]
-    fn look_at(eye: &Point3, center: &Vec3, up: &Vec3) -> LookingCamera {
-        raydeon::Camera::look_at(eye.cast_unit(), center.cast_unit(), up.cast_unit()).into()
+    fn look_at(
+        eye: &Bound<'_, PyAny>,
+        center: &Bound<'_, PyAny>,
+        up: &Bound<'_, PyAny>,
+    ) -> PyResult<LookingCamera> {
+        let eye = Point3::try_from(eye)?;
+        let center = Vec3::try_from(center)?;
+        let up = Vec3::try_from(up)?;
+        Ok(raydeon::Camera::look_at(eye.cast_unit(), center.cast_unit(), up.cast_unit()).into())
     }
 
     fn __repr__(slf: &Bound<'_, Self>) -> PyResult<String> {
@@ -77,14 +85,23 @@ pywrap!(LineSegment2D, raydeon::path::LineSegment2D<ArbitrarySpace>);
 
 #[pymethods]
 impl LineSegment2D {
-    #[getter]
-    fn p1(&self) -> Point2 {
-        self.p1.cast_unit().into()
+    #[new]
+    fn new(p1: &Bound<'_, PyAny>, p2: &Bound<'_, PyAny>) -> PyResult<Self> {
+        let p1 = Point2::try_from(p1)?;
+        let p2 = Point2::try_from(p2)?;
+        Ok(raydeon::path::LineSegment2D::new(p1.cast_unit(), p2.cast_unit()).into())
     }
 
     #[getter]
-    fn p2(&self) -> Point2 {
-        self.p2.cast_unit().into()
+    fn p1<'py>(&self, py: Python<'py>) -> Bound<'py, PyArray1<f64>> {
+        let p1 = [self.0.p1.x, self.0.p1.y];
+        PyArray1::from_slice_bound(py, &p1)
+    }
+
+    #[getter]
+    fn p2<'py>(&self, py: Python<'py>) -> Bound<'py, PyArray1<f64>> {
+        let p2 = [self.0.p2.x, self.0.p2.y];
+        PyArray1::from_slice_bound(py, &p2)
     }
 
     fn __repr__(slf: &Bound<'_, Self>) -> PyResult<String> {
@@ -97,14 +114,23 @@ pywrap!(LineSegment3D, raydeon::path::LineSegment3D<ArbitrarySpace>);
 
 #[pymethods]
 impl LineSegment3D {
-    #[getter]
-    fn p1(&self) -> Point3 {
-        self.p1.cast_unit().into()
+    #[new]
+    fn new(p1: &Bound<'_, PyAny>, p2: &Bound<'_, PyAny>) -> PyResult<Self> {
+        let p1 = Point3::try_from(p1)?;
+        let p2 = Point3::try_from(p2)?;
+        Ok(raydeon::path::LineSegment3D::new(p1.cast_unit(), p2.cast_unit()).into())
     }
 
     #[getter]
-    fn p2(&self) -> Point3 {
-        self.p2.cast_unit().into()
+    fn p1<'py>(&self, py: Python<'py>) -> Bound<'py, PyArray1<f64>> {
+        let p1 = [self.0.p1.x, self.0.p1.y, self.0.p1.z];
+        PyArray1::from_slice_bound(py, &p1)
+    }
+
+    #[getter]
+    fn p2<'py>(&self, py: Python<'py>) -> Bound<'py, PyArray1<f64>> {
+        let p2 = [self.0.p2.x, self.0.p2.y, self.0.p2.z];
+        PyArray1::from_slice_bound(py, &p2)
     }
 
     fn __repr__(slf: &Bound<'_, Self>) -> PyResult<String> {
@@ -117,5 +143,7 @@ pub(crate) fn register(m: &Bound<'_, PyModule>) -> PyResult<()> {
     m.add_class::<Camera>()?;
     // `LookingCamera` remains "private"
     m.add_class::<Scene>()?;
+    m.add_class::<LineSegment2D>()?;
+    m.add_class::<LineSegment3D>()?;
     Ok(())
 }
