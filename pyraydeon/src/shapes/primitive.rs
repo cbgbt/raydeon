@@ -5,24 +5,24 @@ use raydeon::WorldSpace;
 use std::sync::Arc;
 
 #[pyclass(frozen, extends=Geometry, subclass)]
-pub(crate) struct RectPrism(pub(crate) Arc<raydeon::shapes::RectPrism>);
+pub(crate) struct AxisAlignedCuboid(pub(crate) Arc<raydeon::shapes::AxisAlignedCuboid>);
 
-impl ::std::ops::Deref for RectPrism {
-    type Target = Arc<raydeon::shapes::RectPrism>;
+impl ::std::ops::Deref for AxisAlignedCuboid {
+    type Target = Arc<raydeon::shapes::AxisAlignedCuboid>;
 
     fn deref(&self) -> &Self::Target {
         &self.0
     }
 }
 
-impl From<Arc<raydeon::shapes::RectPrism>> for RectPrism {
-    fn from(value: Arc<raydeon::shapes::RectPrism>) -> Self {
+impl From<Arc<raydeon::shapes::AxisAlignedCuboid>> for AxisAlignedCuboid {
+    fn from(value: Arc<raydeon::shapes::AxisAlignedCuboid>) -> Self {
         Self(value)
     }
 }
 
 #[pymethods]
-impl RectPrism {
+impl AxisAlignedCuboid {
     #[new]
     #[pyo3(signature = (min, max, tag=0))]
     fn new(
@@ -33,7 +33,7 @@ impl RectPrism {
         let min: Vec3 = min.try_into()?;
         let max: Vec3 = max.try_into()?;
 
-        let shape = Arc::new(raydeon::shapes::RectPrism::tagged(
+        let shape = Arc::new(raydeon::shapes::AxisAlignedCuboid::tagged(
             min.cast_unit(),
             max.cast_unit(),
             tag,

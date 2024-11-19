@@ -5,7 +5,7 @@ use std::sync::Arc;
 
 mod primitive;
 
-pub(crate) use primitive::{RectPrism, Tri};
+pub(crate) use primitive::{AxisAlignedCuboid, Tri};
 
 use crate::linear::AABB3;
 use crate::ray::{HitData, Ray};
@@ -139,7 +139,7 @@ impl raydeon::Shape<WorldSpace> for PythonGeometry {
 }
 
 pub(crate) fn register(m: &Bound<'_, PyModule>) -> PyResult<()> {
-    m.add_class::<RectPrism>()?;
+    m.add_class::<AxisAlignedCuboid>()?;
     m.add_class::<Tri>()?;
     m.add_class::<Geometry>()?;
     Ok(())

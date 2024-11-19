@@ -249,7 +249,7 @@ impl AABB3 {
     }
 
     fn hit_by(&self, ray: Ray) -> Option<HitData> {
-        raydeon::shapes::RectPrism::from(self.0.cast_unit())
+        raydeon::shapes::AxisAlignedCuboid::from(self.0.cast_unit())
             .hit_by(&ray.0)
             .map(Into::into)
     }

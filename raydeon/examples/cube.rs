@@ -1,4 +1,4 @@
-use raydeon::shapes::RectPrism;
+use raydeon::shapes::AxisAlignedCuboid;
 use raydeon::{Camera, Scene, WPoint3, WVec3};
 use std::sync::Arc;
 
@@ -7,7 +7,7 @@ fn main() {
         .format_timestamp_nanos()
         .init();
 
-    let scene = Scene::new(vec![Arc::new(RectPrism::new(
+    let scene = Scene::new(vec![Arc::new(AxisAlignedCuboid::new(
         WVec3::new(-1.0, -1.0, -1.0),
         WVec3::new(1.0, 1.0, 1.0),
     ))]);

@@ -1,5 +1,5 @@
 pub use self::plane::Plane;
-pub use self::rectprism::RectPrism;
+pub use self::rectprism::AxisAlignedCuboid;
 pub use self::sphere::Sphere;
 pub use self::triangle::Triangle;
 

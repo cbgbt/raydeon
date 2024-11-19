@@ -5,29 +5,29 @@ use crate::{Camera, HitData, Ray, Shape, WPoint3, WVec3, WorldSpace, AABB3};
 
 #[derive(Debug, Copy, Clone)]
 #[cfg_attr(test, derive(PartialEq))]
-pub struct RectPrism {
+pub struct AxisAlignedCuboid {
     pub min: WVec3,
     pub max: WVec3,
     pub tag: usize,
 }
 
-impl RectPrism {
-    pub fn new(min: WVec3, max: WVec3) -> RectPrism {
+impl AxisAlignedCuboid {
+    pub fn new(min: WVec3, max: WVec3) -> AxisAlignedCuboid {
         Self::tagged(min, max, 0)
     }
 
-    pub fn tagged(min: WVec3, max: WVec3, tag: usize) -> RectPrism {
-        RectPrism { min, max, tag }
+    pub fn tagged(min: WVec3, max: WVec3, tag: usize) -> AxisAlignedCuboid {
+        AxisAlignedCuboid { min, max, tag }
     }
 }
 
-impl From<AABB3<WorldSpace>> for RectPrism {
+impl From<AABB3<WorldSpace>> for AxisAlignedCuboid {
     fn from(value: AABB3<WorldSpace>) -> Self {
         Self::new(value.min.to_vector(), value.max.to_vector())
     }
 }
 
-impl Shape<WorldSpace> for RectPrism {
+impl Shape<WorldSpace> for AxisAlignedCuboid {
     fn hit_by(&self, ray: &Ray) -> Option<HitData> {
         let aabb = collision::Aabb3::new(
             cgmath::Point3::new(self.min.x, self.min.y, self.min.z),
@@ -93,7 +93,7 @@ mod test {
 
     #[test]
     fn test_rectp_hit_by() {
-        let prism1 = RectPrism::new(WVec3::new(0.0, 0.0, 0.0), WVec3::new(1.0, 1.0, 1.0));
+        let prism1 = AxisAlignedCuboid::new(WVec3::new(0.0, 0.0, 0.0), WVec3::new(1.0, 1.0, 1.0));
 
         let ray1 = Ray::new(WPoint3::new(-1.0, 0.5, 0.5), WVec3::new(1.0, 0.0, 0.0));
 

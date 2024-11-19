@@ -1,6 +1,6 @@
 use std::sync::Arc;
 
-use raydeon::shapes::RectPrism;
+use raydeon::shapes::AxisAlignedCuboid;
 use raydeon::{Camera, Scene, Shape, WPoint3, WVec3, WorldSpace};
 
 fn main() {
@@ -82,7 +82,7 @@ fn generate_scene() -> Vec<Arc<dyn Shape<WorldSpace>>> {
 
             let z1 = cell_z + 0.15;
             let z2 = cell_z + CELL_LENGTH - 0.15;
-            scene.push(Arc::new(RectPrism::new(
+            scene.push(Arc::new(AxisAlignedCuboid::new(
                 WVec3::new(x1, 0.0, z1),
                 WVec3::new(x2, 2.5, z2),
             )));
