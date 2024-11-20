@@ -38,7 +38,7 @@ impl Geometry {
     pub(crate) fn geometry(&self, obj: PyObject) -> Arc<dyn raydeon::Shape<WorldSpace>> {
         match &self.geom {
             InnerGeometry::Native(ref geom) => Arc::clone(geom),
-            InnerGeometry::Py => Arc::new(PythonGeometry { slf: obj }),
+            InnerGeometry::Py => Arc::new(PythonGeometry::new(obj)),
         }
     }
 }
@@ -148,6 +148,20 @@ impl CollisionGeometry {
 #[derive(Debug)]
 struct PythonGeometry {
     slf: PyObject,
+    aabb: Option<AABB3>,
+}
+
+impl PythonGeometry {
+    fn new(slf: PyObject) -> Self {
+        Self { slf, aabb: None }
+    }
+
+    fn as_collision_geometry(slf: PyObject) -> Self {
+        let mut ret = Self { slf, aabb: None };
+        let aabb = raydeon::CollisionGeometry::bounding_box(&ret);
+        ret.aabb = aabb.map(|aabb| aabb.cast_unit().into());
+        ret
+    }
 }
 
 impl raydeon::Shape<WorldSpace> for PythonGeometry {
@@ -161,10 +175,10 @@ impl raydeon::Shape<WorldSpace> for PythonGeometry {
 
             let geometry: Vec<_> = collision_iter
                 .map(|obj| {
-                    Ok(Arc::new(PythonGeometry {
-                        slf: obj?.into_py(py),
-                    })
-                        as Arc<dyn raydeon::CollisionGeometry<WorldSpace>>)
+                    Ok(
+                        Arc::new(PythonGeometry::as_collision_geometry(obj?.into_py(py)))
+                            as Arc<dyn raydeon::CollisionGeometry<WorldSpace>>,
+                    )
                 })
                 .collect::<PyResult<_>>()
                 .unwrap();
@@ -197,6 +211,9 @@ impl raydeon::Shape<WorldSpace> for PythonGeometry {
 
 impl raydeon::CollisionGeometry<WorldSpace> for PythonGeometry {
     fn hit_by(&self, ray: &raydeon::Ray) -> Option<raydeon::HitData> {
+        if let Some(aabb) = self.aabb {
+            raydeon::shapes::AxisAlignedCuboid::from(aabb.0.cast_unit()).hit_by(ray)?;
+        }
         Python::with_gil(|py| {
             let inner = self.slf.bind(py);
             let ray = Ray::from(*ray);

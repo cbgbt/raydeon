@@ -39,8 +39,6 @@ class Quad(CollisionGeometry):
         return 0 <= u1 <= 1 and 0 <= u2 <= 1
 
     def hit_by(self, ray) -> HitData | None:
-        if not self.bounding_box().hit_by(ray):
-            return None
         intersection = self.plane.hit_by(ray)
         if intersection is not None and self.is_point_in_face(intersection.hit_point):
             return intersection
