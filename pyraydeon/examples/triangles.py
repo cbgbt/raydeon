@@ -7,6 +7,9 @@ class CustomTriangle(Geometry):
     def __init__(self, p1, p2, p3):
         self.tri = Tri(p1, p2, p3)
 
+    def collision_geomery(self):
+        return [self]
+
     def hit_by(self, ray):
         return self.tri.hit_by(ray)
 

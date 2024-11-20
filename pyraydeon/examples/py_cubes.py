@@ -7,7 +7,48 @@ geometry as the sum of native parts.
 import numpy as np
 import svg
 
-from pyraydeon import AABB3, Camera, Geometry, HitData, LineSegment3D, Scene
+from pyraydeon import (
+    AABB3,
+    Camera,
+    Geometry,
+    HitData,
+    LineSegment3D,
+    Scene,
+    CollisionGeometry,
+    Plane,
+)
+
+
+class Quad(CollisionGeometry):
+    def __init__(self, vertices):
+        self.vertices = vertices
+        self.plane = self.compute_plane(vertices)
+
+    def compute_plane(self, points):
+        p1, p2, p3 = points[:3]
+        normal = np.cross(p2 - p1, p3 - p1)
+        normal /= np.linalg.norm(normal)
+        return Plane(p1, normal)
+
+    def is_point_in_face(self, point):
+        edge1 = self.vertices[1] - self.vertices[0]
+        edge2 = self.vertices[3] - self.vertices[0]
+        v = point - self.vertices[0]
+        u1 = np.dot(v, edge1) / np.dot(edge1, edge1)
+        u2 = np.dot(v, edge2) / np.dot(edge2, edge2)
+        return 0 <= u1 <= 1 and 0 <= u2 <= 1
+
+    def hit_by(self, ray) -> HitData | None:
+        if not self.bounding_box().hit_by(ray):
+            return None
+        intersection = self.plane.hit_by(ray)
+        if intersection is not None and self.is_point_in_face(intersection.hit_point):
+            return intersection
+
+    def bounding_box(self):
+        my_min = np.minimum.reduce(self.vertices)
+        my_max = np.maximum.reduce(self.vertices)
+        return AABB3(my_min, my_max)
 
 
 class RectPrism(Geometry):
@@ -73,50 +114,12 @@ class RectPrism(Geometry):
             [2, 3, 7, 6],
             [3, 0, 4, 7],
         ]
-        self.planes = [self.compute_plane(self.vertices[face]) for face in self.faces]
 
     def __repr__(self):
         return f"RectPrism(basis='[{self.right}, {self.up}, {self.fwd}]', dims='[{self.width}, {self.height}, {self.depth}]')"
 
-    def compute_plane(self, points):
-        p1, p2, p3 = points[:3]
-        normal = np.cross(p2 - p1, p3 - p1)
-        normal /= np.linalg.norm(normal)
-        d = -np.dot(normal, p1)
-        return normal, d
-
-    def ray_intersects_plane(self, ray, plane) -> HitData | None:
-        normal, d = plane
-
-        denom = np.dot(normal, ray.dir)
-        if abs(denom) < 1e-6:
-            return None
-        t = -(np.dot(normal, ray.point) + d) / denom
-        return HitData(ray.point + t * ray.dir, t) if t >= 0 else None
-
-    def is_point_in_face(self, point, face):
-        face_vertices = self.vertices[face]
-        edge1 = face_vertices[1] - face_vertices[0]
-        edge2 = face_vertices[3] - face_vertices[0]
-        v = point - face_vertices[0]
-        u1 = np.dot(v, edge1) / np.dot(edge1, edge1)
-        u2 = np.dot(v, edge2) / np.dot(edge2, edge2)
-        return 0 <= u1 <= 1 and 0 <= u2 <= 1
-
-    def hit_by(self, ray) -> HitData | None:
-        if not self.bounding_box().hit_by(ray):
-            return None
-        for face, plane in zip(self.faces, self.planes):
-            intersection = self.ray_intersects_plane(ray, plane)
-            if intersection is not None and self.is_point_in_face(
-                intersection.hit_point, face
-            ):
-                return intersection
-
-    def bounding_box(self):
-        my_min = np.minimum.reduce(self.vertices)
-        my_max = np.maximum.reduce(self.vertices)
-        return AABB3(my_min, my_max)
+    def collision_geometry(self):
+        return [Quad(self.vertices[face]) for face in self.faces]
 
     def paths(self, cam):
         edges = set(

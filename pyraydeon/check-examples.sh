@@ -22,6 +22,7 @@ if [ "$ALL_TOOLS_FOUND" = false ]; then
     exit 1
 fi
 
+echo "Reinstalling native dependencies in virtualenv..."
 uv --project ${SCRIPT_DIR} run --reinstall python -c 'print("Reinstalled dependencies")'
 
 for example in ${SCRIPT_DIR}/examples/*.py; do
@@ -30,7 +31,7 @@ for example in ${SCRIPT_DIR}/examples/*.py; do
     echo "Running example: $example_name"
     outpath=$(mktemp)
 
-    uv --project ${SCRIPT_DIR} run ${example} | resvg --resources-dir . - ${outpath}
+    time uv --project ${SCRIPT_DIR} run ${example} | resvg --resources-dir . - ${outpath}
 
     outpath_expected=$(mktemp)
     resvg ${SCRIPT_DIR}/examples/${example_name}_expected.svg ${outpath_expected}

@@ -1,6 +1,6 @@
 use std::sync::Arc;
 
-use numpy::PyArray1;
+use numpy::{Ix1, PyArray, PyReadonlyArray1};
 use pyo3::prelude::*;
 use raydeon::WorldSpace;
 
@@ -86,22 +86,20 @@ pywrap!(LineSegment2D, raydeon::path::LineSegment2D<ArbitrarySpace>);
 #[pymethods]
 impl LineSegment2D {
     #[new]
-    fn new(p1: &Bound<'_, PyAny>, p2: &Bound<'_, PyAny>) -> PyResult<Self> {
+    fn new(p1: PyReadonlyArray1<f64>, p2: PyReadonlyArray1<f64>) -> PyResult<Self> {
         let p1 = Point2::try_from(p1)?;
         let p2 = Point2::try_from(p2)?;
         Ok(raydeon::path::LineSegment2D::new(p1.cast_unit(), p2.cast_unit()).into())
     }
 
     #[getter]
-    fn p1<'py>(&self, py: Python<'py>) -> Bound<'py, PyArray1<f64>> {
-        let p1 = [self.0.p1.x, self.0.p1.y];
-        PyArray1::from_slice_bound(py, &p1)
+    fn p1<'py>(&self, py: Python<'py>) -> Bound<'py, PyArray<f64, Ix1>> {
+        PyArray::from_slice_bound(py, &self.0.p1.to_array())
     }
 
     #[getter]
-    fn p2<'py>(&self, py: Python<'py>) -> Bound<'py, PyArray1<f64>> {
-        let p2 = [self.0.p2.x, self.0.p2.y];
-        PyArray1::from_slice_bound(py, &p2)
+    fn p2<'py>(&self, py: Python<'py>) -> Bound<'py, PyArray<f64, Ix1>> {
+        PyArray::from_slice_bound(py, &self.0.p2.to_array())
     }
 
     fn __repr__(slf: &Bound<'_, Self>) -> PyResult<String> {
@@ -122,15 +120,13 @@ impl LineSegment3D {
     }
 
     #[getter]
-    fn p1<'py>(&self, py: Python<'py>) -> Bound<'py, PyArray1<f64>> {
-        let p1 = [self.0.p1.x, self.0.p1.y, self.0.p1.z];
-        PyArray1::from_slice_bound(py, &p1)
+    fn p1<'py>(&self, py: Python<'py>) -> Bound<'py, PyArray<f64, Ix1>> {
+        PyArray::from_slice_bound(py, &self.0.p1.to_array())
     }
 
     #[getter]
-    fn p2<'py>(&self, py: Python<'py>) -> Bound<'py, PyArray1<f64>> {
-        let p2 = [self.0.p2.x, self.0.p2.y, self.0.p2.z];
-        PyArray1::from_slice_bound(py, &p2)
+    fn p2<'py>(&self, py: Python<'py>) -> Bound<'py, PyArray<f64, Ix1>> {
+        PyArray::from_slice_bound(py, &self.0.p2.to_array())
     }
 
     fn __repr__(slf: &Bound<'_, Self>) -> PyResult<String> {

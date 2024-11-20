@@ -1,5 +1,4 @@
-use crate::path::LineSegment3D;
-use crate::{Camera, HitData, Ray, Shape, WPoint3, WVec3, WorldSpace};
+use crate::{CollisionGeometry, HitData, Ray, WPoint3, WVec3, WorldSpace};
 
 #[derive(Debug, Copy, Clone)]
 #[cfg_attr(test, derive(PartialEq))]
@@ -24,7 +23,7 @@ impl Sphere {
     }
 }
 
-impl Shape<WorldSpace> for Sphere {
+impl CollisionGeometry<WorldSpace> for Sphere {
     fn hit_by(&self, ray: &Ray) -> Option<HitData> {
         let l_vec = self.center - ray.point;
         let t_ca = l_vec.dot(ray.dir);
@@ -47,10 +46,6 @@ impl Shape<WorldSpace> for Sphere {
 
         let hit_point = ray.point + (ray.dir.normalize() * t);
         Some(HitData::new(hit_point, t))
-    }
-
-    fn paths(&self, _cam: &Camera) -> Vec<LineSegment3D<WorldSpace>> {
-        unimplemented!()
     }
 
     fn bounding_box(&self) -> Option<crate::AABB3<crate::WorldSpace>> {

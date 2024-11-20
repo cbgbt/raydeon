@@ -1,6 +1,8 @@
+use std::sync::Arc;
+
 use super::plane::Plane;
 use crate::path::LineSegment3D;
-use crate::{Camera, HitData, Ray, Shape, WPoint3, WVec3, WorldSpace};
+use crate::{Camera, CollisionGeometry, HitData, Ray, Shape, WPoint3, WVec3, WorldSpace};
 
 #[derive(Debug, Copy, Clone)]
 #[cfg_attr(test, derive(PartialEq))]
@@ -31,6 +33,29 @@ impl Triangle {
 }
 
 impl Shape<WorldSpace> for Triangle {
+    fn collision_geometry(&self) -> Option<Vec<std::sync::Arc<dyn CollisionGeometry<WorldSpace>>>> {
+        Some(vec![Arc::new(*self)])
+    }
+
+    fn paths(&self, _cam: &Camera) -> Vec<LineSegment3D<WorldSpace>> {
+        let v0 = self.verts[0];
+        let v1 = self.verts[1];
+        let v2 = self.verts[2];
+
+        let centroid = (v0 + v1.to_vector() + v2.to_vector()) / 3.0;
+        let v0 = v0 + (v0 - centroid).normalize() * 0.015;
+        let v1 = v1 + (v1 - centroid).normalize() * 0.015;
+        let v2 = v2 + (v2 - centroid).normalize() * 0.015;
+
+        vec![
+            LineSegment3D::tagged(v0, v1, self.tag),
+            LineSegment3D::tagged(v1, v2, self.tag),
+            LineSegment3D::tagged(v2, v0, self.tag),
+        ]
+    }
+}
+
+impl CollisionGeometry<WorldSpace> for Triangle {
     fn hit_by(&self, ray: &Ray) -> Option<HitData> {
         let p_hit = self.plane.hit_by(ray);
 
@@ -57,23 +82,6 @@ impl Shape<WorldSpace> for Triangle {
             }
             None => None,
         }
-    }
-
-    fn paths(&self, _cam: &Camera) -> Vec<LineSegment3D<WorldSpace>> {
-        let v0 = self.verts[0];
-        let v1 = self.verts[1];
-        let v2 = self.verts[2];
-
-        let centroid = (v0 + v1.to_vector() + v2.to_vector()) / 3.0;
-        let v0 = v0 + (v0 - centroid).normalize() * 0.015;
-        let v1 = v1 + (v1 - centroid).normalize() * 0.015;
-        let v2 = v2 + (v2 - centroid).normalize() * 0.015;
-
-        vec![
-            LineSegment3D::tagged(v0, v1, self.tag),
-            LineSegment3D::tagged(v1, v2, self.tag),
-            LineSegment3D::tagged(v2, v0, self.tag),
-        ]
     }
 
     fn bounding_box(&self) -> Option<crate::AABB3<crate::WorldSpace>> {

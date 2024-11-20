@@ -1,3 +1,4 @@
+use primitive::Plane;
 use pyo3::prelude::*;
 use pyo3::types::{PyDict, PyTuple};
 use raydeon::WorldSpace;
@@ -50,35 +51,91 @@ impl Geometry {
         Self::py()
     }
 
-    fn hit_by(&self, ray: &Ray) -> Option<HitData> {
-        match self.geom {
-            InnerGeometry::Native(ref geom) => geom.hit_by(&ray.0).map(Into::into),
+    fn collision_geometry(&self, py: Python) -> Option<Vec<CollisionGeometry>> {
+        match &self.geom {
+            InnerGeometry::Native(geom) => py.allow_threads(|| {
+                let geometry = geom.collision_geometry()?;
+                Some(
+                    geometry
+                        .into_iter()
+                        .map(CollisionGeometry::native)
+                        .collect(),
+                )
+            }),
             InnerGeometry::Py => None,
         }
     }
 
-    fn paths(&self, cam: &Camera) -> Vec<LineSegment3D> {
+    fn paths(&self, py: Python, cam: &Camera) -> Vec<LineSegment3D> {
         match &self.geom {
-            InnerGeometry::Native(geom) => {
+            InnerGeometry::Native(geom) => py.allow_threads(|| {
                 let paths = geom.paths(&cam.0);
                 paths
                     .into_iter()
                     .map(raydeon::path::LineSegment3D::cast_unit)
                     .map(Into::into)
                     .collect()
-            }
+            }),
             InnerGeometry::Py => Vec::new(),
         }
     }
 
-    fn bounding_box(&self) -> Option<AABB3> {
+    fn __repr__(slf: &Bound<'_, Self>) -> PyResult<String> {
+        let class_name = slf.get_type().qualname()?;
+        Ok(format!("{}<{:?}>", class_name, slf.borrow().geom))
+    }
+}
+
+#[derive(Debug)]
+enum InnerCollisionGeometry {
+    Native(Arc<dyn raydeon::CollisionGeometry<WorldSpace>>),
+    Py,
+}
+
+#[derive(Debug)]
+#[pyclass(subclass, frozen)]
+pub(crate) struct CollisionGeometry {
+    geom: InnerCollisionGeometry,
+}
+
+impl CollisionGeometry {
+    pub(crate) fn native(geom: Arc<dyn raydeon::CollisionGeometry<WorldSpace>>) -> Self {
+        let geom = InnerCollisionGeometry::Native(geom);
+        Self { geom }
+    }
+
+    pub(crate) fn py() -> Self {
+        let geom = InnerCollisionGeometry::Py;
+        Self { geom }
+    }
+}
+
+#[pymethods]
+impl CollisionGeometry {
+    #[new]
+    #[pyo3(signature = (*_py_args, **_py_kwargs))]
+    fn new(_py_args: &Bound<'_, PyTuple>, _py_kwargs: Option<&Bound<'_, PyDict>>) -> Self {
+        Self::py()
+    }
+
+    fn hit_by(&self, py: Python, ray: &Ray) -> Option<HitData> {
+        match self.geom {
+            InnerCollisionGeometry::Native(ref geom) => {
+                py.allow_threads(|| geom.hit_by(&ray.0).map(Into::into))
+            }
+            InnerCollisionGeometry::Py => None,
+        }
+    }
+
+    fn bounding_box(&self, py: Python) -> Option<AABB3> {
         match &self.geom {
-            InnerGeometry::Native(geom) => geom
-                .bounding_box()
-                .as_ref()
-                .map(raydeon::AABB3::cast_unit)
-                .map(Into::into),
-            InnerGeometry::Py => None,
+            InnerCollisionGeometry::Native(geom) => py.allow_threads(|| {
+                geom.bounding_box()
+                    .as_ref()
+                    .map(raydeon::AABB3::cast_unit)
+                    .map(Into::into)
+            }),
+            InnerCollisionGeometry::Py => None,
         }
     }
 
@@ -94,26 +151,38 @@ struct PythonGeometry {
 }
 
 impl raydeon::Shape<WorldSpace> for PythonGeometry {
-    fn hit_by(&self, ray: &raydeon::Ray) -> Option<raydeon::HitData> {
-        Python::with_gil(|py| {
-            let inner = self.slf.bind_borrowed(py);
-            let ray = Ray::from(*ray);
-            let call_result = inner.call_method1("hit_by", (ray,)).ok()?;
+    fn collision_geometry(&self) -> Option<Vec<Arc<dyn raydeon::CollisionGeometry<WorldSpace>>>> {
+        let collision_geometry: Option<_> = Python::with_gil(|py| {
+            let inner = self.slf.bind(py);
+            let call_result = inner.call_method1("collision_geometry", ()).ok()?;
 
-            call_result
-                .extract::<Option<HitData>>()
-                .ok()?
-                .map(|hit| hit.0)
-        })
+            let nullable: Option<Bound<'_, PyAny>> = call_result.extract().unwrap();
+            let collision_iter = nullable?.iter().unwrap();
+
+            let geometry: Vec<_> = collision_iter
+                .map(|obj| {
+                    Ok(Arc::new(PythonGeometry {
+                        slf: obj?.into_py(py),
+                    })
+                        as Arc<dyn raydeon::CollisionGeometry<WorldSpace>>)
+                })
+                .collect::<PyResult<_>>()
+                .unwrap();
+
+            Some(geometry)
+        });
+        collision_geometry
     }
 
     fn paths(&self, cam: &raydeon::Camera) -> Vec<raydeon::path::LineSegment3D<WorldSpace>> {
         let segments: Option<_> = Python::with_gil(|py| {
-            let inner = self.slf.bind_borrowed(py);
+            let inner = self.slf.bind(py);
             let cam = Camera::from(*cam);
-            let call_result = inner.call_method1("paths", (cam,)).ok()?;
+            let call_result = inner.call_method1("paths", (cam,)).unwrap();
 
-            let segments = call_result.extract::<Vec<LineSegment3D>>().ok()?;
+            let segments = call_result
+                .extract::<Option<Vec<LineSegment3D>>>()
+                .unwrap()?;
 
             Some(
                 segments
@@ -124,11 +193,26 @@ impl raydeon::Shape<WorldSpace> for PythonGeometry {
         });
         segments.unwrap_or_default()
     }
+}
+
+impl raydeon::CollisionGeometry<WorldSpace> for PythonGeometry {
+    fn hit_by(&self, ray: &raydeon::Ray) -> Option<raydeon::HitData> {
+        Python::with_gil(|py| {
+            let inner = self.slf.bind(py);
+            let ray = Ray::from(*ray);
+            let call_result = inner.call_method1("hit_by", (ray,)).unwrap();
+
+            call_result
+                .extract::<Option<HitData>>()
+                .ok()?
+                .map(|hit| hit.0)
+        })
+    }
 
     fn bounding_box(&self) -> Option<raydeon::AABB3<WorldSpace>> {
         Python::with_gil(|py| {
-            let inner = self.slf.bind_borrowed(py);
-            let call_result = inner.call_method1("hit_by", ()).ok()?;
+            let inner = self.slf.bind(py);
+            let call_result = inner.call_method1("bounding_box", ()).unwrap();
 
             call_result
                 .extract::<Option<AABB3>>()
@@ -141,6 +225,8 @@ impl raydeon::Shape<WorldSpace> for PythonGeometry {
 pub(crate) fn register(m: &Bound<'_, PyModule>) -> PyResult<()> {
     m.add_class::<AxisAlignedCuboid>()?;
     m.add_class::<Tri>()?;
+    m.add_class::<Plane>()?;
     m.add_class::<Geometry>()?;
+    m.add_class::<CollisionGeometry>()?;
     Ok(())
 }

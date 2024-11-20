@@ -28,7 +28,7 @@ for example in ${SCRIPT_DIR}/examples/*.rs; do
     echo "Running example: $example_name"
     outpath=$(mktemp)
 
-    cargo run --example ${example_name} | resvg --resources-dir . - ${outpath}
+    time cargo run --example ${example_name} | resvg --resources-dir . - ${outpath}
 
     outpath_expected=$(mktemp)
     resvg ${SCRIPT_DIR}/examples/${example_name}_expected.svg ${outpath_expected}

@@ -1,4 +1,4 @@
-use super::Geometry;
+use super::{CollisionGeometry, Geometry};
 use crate::linear::{Point3, Vec3};
 use pyo3::prelude::*;
 use raydeon::WorldSpace;
@@ -82,6 +82,44 @@ impl Tri {
             tag,
         ));
         let geom = Geometry::native(Arc::clone(&shape) as Arc<dyn raydeon::Shape<WorldSpace>>);
+        Ok((Self(shape), geom))
+    }
+}
+
+#[pyclass(frozen, extends=CollisionGeometry, subclass)]
+pub(crate) struct Plane(pub(crate) Arc<raydeon::shapes::Plane>);
+
+impl ::std::ops::Deref for Plane {
+    type Target = Arc<raydeon::shapes::Plane>;
+
+    fn deref(&self) -> &Self::Target {
+        &self.0
+    }
+}
+
+impl From<Arc<raydeon::shapes::Plane>> for Plane {
+    fn from(value: Arc<raydeon::shapes::Plane>) -> Self {
+        Self(value)
+    }
+}
+
+#[pymethods]
+impl Plane {
+    #[new]
+    fn new(
+        point: &Bound<'_, PyAny>,
+        normal: &Bound<'_, PyAny>,
+    ) -> PyResult<(Self, CollisionGeometry)> {
+        let point: Point3 = point.try_into()?;
+        let normal: Vec3 = normal.try_into()?;
+
+        let shape = Arc::new(raydeon::shapes::Plane::new(
+            point.0.cast_unit(),
+            normal.0.cast_unit(),
+        ));
+        let geom = CollisionGeometry::native(
+            Arc::clone(&shape) as Arc<dyn raydeon::CollisionGeometry<WorldSpace>>
+        );
         Ok((Self(shape), geom))
     }
 }

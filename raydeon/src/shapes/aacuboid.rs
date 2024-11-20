@@ -1,7 +1,9 @@
+use std::sync::Arc;
+
 use collision::Continuous;
 
 use crate::path::LineSegment3D;
-use crate::{Camera, HitData, Ray, Shape, WPoint3, WVec3, WorldSpace, AABB3};
+use crate::{Camera, CollisionGeometry, HitData, Ray, Shape, WPoint3, WVec3, WorldSpace, AABB3};
 
 #[derive(Debug, Copy, Clone)]
 #[cfg_attr(test, derive(PartialEq))]
@@ -28,24 +30,8 @@ impl From<AABB3<WorldSpace>> for AxisAlignedCuboid {
 }
 
 impl Shape<WorldSpace> for AxisAlignedCuboid {
-    fn hit_by(&self, ray: &Ray) -> Option<HitData> {
-        let aabb = collision::Aabb3::new(
-            cgmath::Point3::new(self.min.x, self.min.y, self.min.z),
-            cgmath::Point3::new(self.max.x, self.max.y, self.max.z),
-        );
-        let r = collision::Ray3::new(
-            cgmath::Point3::new(ray.point.x, ray.point.y, ray.point.z),
-            cgmath::Vector3::new(ray.dir.x, ray.dir.y, ray.dir.z),
-        );
-
-        match r.intersection(&aabb) {
-            Some(p) => {
-                let wp = WPoint3::new(p.x, p.y, p.z);
-                let dist = (wp - ray.point).length();
-                Some(HitData::new(wp, dist))
-            }
-            None => None,
-        }
+    fn collision_geometry(&self) -> Option<Vec<Arc<dyn CollisionGeometry<WorldSpace>>>> {
+        Some(vec![Arc::new(*self)])
     }
 
     fn paths(&self, _cam: &Camera) -> Vec<LineSegment3D<WorldSpace>> {
@@ -80,6 +66,28 @@ impl Shape<WorldSpace> for AxisAlignedCuboid {
             LineSegment3D::tagged(p3, p7, self.tag),
             LineSegment3D::tagged(p4, p8, self.tag),
         ]
+    }
+}
+
+impl CollisionGeometry<WorldSpace> for AxisAlignedCuboid {
+    fn hit_by(&self, ray: &Ray) -> Option<HitData> {
+        let aabb = collision::Aabb3::new(
+            cgmath::Point3::new(self.min.x, self.min.y, self.min.z),
+            cgmath::Point3::new(self.max.x, self.max.y, self.max.z),
+        );
+        let r = collision::Ray3::new(
+            cgmath::Point3::new(ray.point.x, ray.point.y, ray.point.z),
+            cgmath::Vector3::new(ray.dir.x, ray.dir.y, ray.dir.z),
+        );
+
+        match r.intersection(&aabb) {
+            Some(p) => {
+                let wp = WPoint3::new(p.x, p.y, p.z);
+                let dist = (wp - ray.point).length();
+                Some(HitData::new(wp, dist))
+            }
+            None => None,
+        }
     }
 
     fn bounding_box(&self) -> Option<crate::AABB3<crate::WorldSpace>> {

@@ -1,7 +1,7 @@
-use numpy::PyArray1;
+use numpy::{Ix1, PyArray, PyReadonlyArray1};
 use pyo3::exceptions::PyIndexError;
 use pyo3::prelude::*;
-use raydeon::Shape;
+use raydeon::CollisionGeometry as _;
 
 use crate::ray::{HitData, Ray};
 
@@ -90,6 +90,17 @@ impl TryFrom<&Bound<'_, PyAny>> for Vec3 {
     }
 }
 
+impl TryFrom<PyReadonlyArray1<'_, f64>> for Vec3 {
+    type Error = PyErr;
+
+    fn try_from(value: PyReadonlyArray1<f64>) -> Result<Self, Self::Error> {
+        let value = value
+            .as_slice()
+            .map_err(|_| pyo3::exceptions::PyValueError::new_err("hit_point must be a 1D array"))?;
+        Ok(Self::new(value[0], value[1], value[2]))
+    }
+}
+
 pywrap!(Point3, raydeon::Point3<ArbitrarySpace>);
 
 #[pymethods]
@@ -155,6 +166,17 @@ impl TryFrom<&Bound<'_, PyAny>> for Point3 {
     }
 }
 
+impl TryFrom<PyReadonlyArray1<'_, f64>> for Point3 {
+    type Error = PyErr;
+
+    fn try_from(value: PyReadonlyArray1<f64>) -> Result<Self, Self::Error> {
+        let value = value
+            .as_slice()
+            .map_err(|_| pyo3::exceptions::PyValueError::new_err("hit_point must be a 1D array"))?;
+        Ok(Self::new(value[0], value[1], value[2]))
+    }
+}
+
 pywrap!(Point2, raydeon::Point2<ArbitrarySpace>);
 
 #[pymethods]
@@ -199,13 +221,14 @@ impl Point2 {
     }
 }
 
-impl TryFrom<&Bound<'_, PyAny>> for Point2 {
+impl TryFrom<PyReadonlyArray1<'_, f64>> for Point2 {
     type Error = PyErr;
 
-    fn try_from(value: &Bound<'_, PyAny>) -> Result<Self, Self::Error> {
-        let x = value.get_item(0)?.extract()?;
-        let y = value.get_item(1)?.extract()?;
-        Ok(Self::new(x, y))
+    fn try_from(value: PyReadonlyArray1<f64>) -> Result<Self, Self::Error> {
+        let value = value
+            .as_slice()
+            .map_err(|_| pyo3::exceptions::PyValueError::new_err("hit_point must be a 1D array"))?;
+        Ok(Self::new(value[0], value[1]))
     }
 }
 
@@ -230,25 +253,23 @@ pywrap!(AABB3, raydeon::AABB3<ArbitrarySpace>);
 #[pymethods]
 impl AABB3 {
     #[new]
-    fn new(min: &Bound<'_, PyAny>, max: &Bound<'_, PyAny>) -> PyResult<Self> {
+    fn new(min: PyReadonlyArray1<f64>, max: PyReadonlyArray1<f64>) -> PyResult<Self> {
         let min = Point3::try_from(min)?;
         let max = Point3::try_from(max)?;
         Ok(raydeon::AABB3::new(min.0, max.0).into())
     }
 
     #[getter]
-    fn min<'py>(&self, py: Python<'py>) -> Bound<'py, PyArray1<f64>> {
-        let min = [self.0.min.x, self.0.min.y, self.0.min.z];
-        PyArray1::from_slice_bound(py, &min)
+    fn min<'py>(&self, py: Python<'py>) -> Bound<'py, PyArray<f64, Ix1>> {
+        PyArray::from_slice_bound(py, &self.0.min.to_array())
     }
 
     #[getter]
-    fn max<'py>(&self, py: Python<'py>) -> Bound<'py, PyArray1<f64>> {
-        let max = [self.0.max.x, self.0.max.y, self.0.max.z];
-        PyArray1::from_slice_bound(py, &max)
+    fn max<'py>(&self, py: Python<'py>) -> Bound<'py, PyArray<f64, Ix1>> {
+        PyArray::from_slice_bound(py, &self.0.max.to_array())
     }
 
-    fn hit_by(&self, ray: Ray) -> Option<HitData> {
+    fn hit_by(&self, _py: Python, ray: Ray) -> Option<HitData> {
         raydeon::shapes::AxisAlignedCuboid::from(self.0.cast_unit())
             .hit_by(&ray.0)
             .map(Into::into)

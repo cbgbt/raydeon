@@ -4,6 +4,8 @@ pub mod ray;
 pub mod scene;
 pub mod shapes;
 
+use std::sync::Arc;
+
 use path::LineSegment3D;
 pub use ray::{HitData, Ray};
 
@@ -43,7 +45,14 @@ pub trait Shape<Space>: Send + Sync + std::fmt::Debug
 where
     Space: Sized + Send + Sync + std::fmt::Debug + Copy + Clone,
 {
-    fn hit_by(&self, ray: &Ray) -> Option<HitData>;
+    fn collision_geometry(&self) -> Option<Vec<Arc<dyn CollisionGeometry<Space>>>>;
     fn paths(&self, cam: &Camera) -> Vec<LineSegment3D<Space>>;
+}
+
+pub trait CollisionGeometry<Space>: Send + Sync + std::fmt::Debug
+where
+    Space: Sized + Send + Sync + std::fmt::Debug + Copy + Clone,
+{
+    fn hit_by(&self, ray: &Ray) -> Option<HitData>;
     fn bounding_box(&self) -> Option<AABB3<Space>>;
 }

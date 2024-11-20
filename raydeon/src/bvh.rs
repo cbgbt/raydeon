@@ -1,4 +1,4 @@
-use crate::{HitData, Ray, Shape, WorldSpace, AABB3};
+use crate::{CollisionGeometry, HitData, Ray, WorldSpace, AABB3};
 use euclid::Point3D;
 use rayon::prelude::*;
 use std::sync::Arc;
@@ -18,14 +18,14 @@ where
 {
     aabb: AABB3<Space>,
     root: Option<Node<Space>>,
-    unbounded: Vec<Arc<dyn Shape<Space>>>,
+    unbounded: Vec<Arc<dyn CollisionGeometry<Space>>>,
 }
 
 impl<Space> BVHTree<Space>
 where
     Space: Copy + Send + Sync + Sized + std::fmt::Debug + 'static,
 {
-    pub(crate) fn new(shapes: &[Arc<dyn Shape<Space>>]) -> Self {
+    pub(crate) fn new(shapes: &[Arc<dyn CollisionGeometry<Space>>]) -> Self {
         info!(
             "Creating Bounded Volume Hierarchy for {} shapes",
             shapes.len()
@@ -307,7 +307,7 @@ struct BoundedShape<Space>
 where
     Space: Copy + Send + Sync + Sized + std::fmt::Debug + 'static,
 {
-    shape: Arc<dyn Shape<Space>>,
+    shape: Arc<dyn CollisionGeometry<Space>>,
     aabb: AABB3<Space>,
 }
 

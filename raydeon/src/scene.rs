@@ -253,7 +253,12 @@ pub struct Scene {
 
 impl Scene {
     pub fn new(geometry: Vec<Arc<dyn Shape<WorldSpace>>>) -> Scene {
-        let bvh = BVHTree::new(&geometry);
+        let collision_geometry: Vec<_> = geometry
+            .iter()
+            .filter_map(|s| s.collision_geometry())
+            .flatten()
+            .collect();
+        let bvh = BVHTree::new(&collision_geometry);
         Scene { geometry, bvh }
     }
 
