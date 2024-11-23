@@ -33,7 +33,9 @@ fn main() {
     let znear = 0.1;
     let zfar = 10.0;
 
-    let camera = Camera::look_at(eye, focus, up).perspective(fovy, width, height, znear, zfar);
+    let camera = Camera::new()
+        .look_at(eye, focus, up)
+        .perspective(fovy, width, height, znear, zfar);
 
     let paths = scene.attach_camera(camera).render();
 

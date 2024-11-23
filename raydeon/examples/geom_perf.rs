@@ -22,7 +22,9 @@ fn main() {
 
     let scene = Scene::new(generate_scene());
 
-    let camera = Camera::look_at(eye, focus, up).perspective(fovy, width, height, znear, zfar);
+    let camera = Camera::new()
+        .look_at(eye, focus, up)
+        .perspective(fovy, width, height, znear, zfar);
 
     let paths = scene.attach_camera(camera).render();
 

@@ -1,4 +1,5 @@
 pub(crate) mod bvh;
+pub mod camera;
 pub mod path;
 pub mod ray;
 pub mod scene;
@@ -9,7 +10,8 @@ use std::sync::Arc;
 use path::LineSegment3D;
 pub use ray::{HitData, Ray};
 
-pub use scene::{Camera, Scene};
+pub use camera::{Camera, NoObservation, NoPerspective, Observation, Perspective};
+pub use scene::Scene;
 
 #[cfg(test)]
 pub(crate) static EPSILON: f64 = 0.004;
@@ -46,7 +48,7 @@ where
     Space: Sized + Send + Sync + std::fmt::Debug + Copy + Clone,
 {
     fn collision_geometry(&self) -> Option<Vec<Arc<dyn CollisionGeometry<Space>>>>;
-    fn paths(&self, cam: &Camera) -> Vec<LineSegment3D<Space>>;
+    fn paths(&self, cam: &Camera<Perspective, Observation>) -> Vec<LineSegment3D<Space>>;
 }
 
 pub trait CollisionGeometry<Space>: Send + Sync + std::fmt::Debug

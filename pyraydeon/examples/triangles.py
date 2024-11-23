@@ -45,7 +45,7 @@ height = 1024
 znear = 0.1
 zfar = 10.0
 
-cam = Camera.look_at(eye, focus, up).perspective(fovy, width, height, znear, zfar)
+cam = Camera().look_at(eye, focus, up).perspective(fovy, width, height, znear, zfar)
 
 paths = scene.render(cam)
 

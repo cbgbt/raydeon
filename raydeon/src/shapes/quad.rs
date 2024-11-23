@@ -2,7 +2,9 @@ use std::sync::Arc;
 
 use super::Triangle;
 use crate::path::LineSegment3D;
-use crate::{Camera, CollisionGeometry, Shape, WPoint3, WVec3, WorldSpace};
+use crate::{
+    Camera, CollisionGeometry, Observation, Perspective, Shape, WPoint3, WVec3, WorldSpace,
+};
 
 #[derive(Debug, Copy, Clone)]
 #[cfg_attr(test, derive(PartialEq))]
@@ -46,7 +48,7 @@ impl Shape<WorldSpace> for Quad {
         ])
     }
 
-    fn paths(&self, _cam: &Camera) -> Vec<LineSegment3D<WorldSpace>> {
+    fn paths(&self, _cam: &Camera<Perspective, Observation>) -> Vec<LineSegment3D<WorldSpace>> {
         let centroid = self
             .verts
             .into_iter()

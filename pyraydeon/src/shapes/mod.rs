@@ -197,7 +197,10 @@ impl raydeon::Shape<WorldSpace> for PythonGeometry {
         collision_geometry
     }
 
-    fn paths(&self, cam: &raydeon::Camera) -> Vec<raydeon::path::LineSegment3D<WorldSpace>> {
+    fn paths(
+        &self,
+        cam: &raydeon::Camera<raydeon::Perspective, raydeon::Observation>,
+    ) -> Vec<raydeon::path::LineSegment3D<WorldSpace>> {
         let segments: Option<_> = Python::with_gil(|py| {
             let inner = self.slf.bind(py);
             let cam = Camera::from(*cam);

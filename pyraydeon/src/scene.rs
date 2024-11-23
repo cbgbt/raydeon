@@ -7,32 +7,30 @@ use raydeon::WorldSpace;
 use crate::linear::{ArbitrarySpace, Point2, Point3, Vec3};
 use crate::shapes::Geometry;
 
-pywrap!(Camera, raydeon::Camera);
+pywrap!(Camera, raydeon::Camera<raydeon::Perspective, raydeon::Observation>);
 
 #[pymethods]
 impl Camera {
-    #[staticmethod]
+    #[new]
+    fn new() -> Self {
+        raydeon::Camera::default().into()
+    }
+
     fn look_at(
+        &self,
         eye: &Bound<'_, PyAny>,
         center: &Bound<'_, PyAny>,
         up: &Bound<'_, PyAny>,
-    ) -> PyResult<LookingCamera> {
+    ) -> PyResult<Camera> {
         let eye = Point3::try_from(eye)?;
         let center = Vec3::try_from(center)?;
         let up = Vec3::try_from(up)?;
-        Ok(raydeon::Camera::look_at(eye.cast_unit(), center.cast_unit(), up.cast_unit()).into())
+        Ok(self
+            .0
+            .look_at(eye.cast_unit(), center.cast_unit(), up.cast_unit())
+            .into())
     }
 
-    fn __repr__(slf: &Bound<'_, Self>) -> PyResult<String> {
-        let class_name = slf.get_type().qualname()?;
-        Ok(format!("{}<{:?}>", class_name, slf.borrow().0))
-    }
-}
-
-pywrap!(LookingCamera, raydeon::scene::LookingCamera);
-
-#[pymethods]
-impl LookingCamera {
     fn perspective(&self, fovy: f64, width: f64, height: f64, znear: f64, zfar: f64) -> Camera {
         self.0.perspective(fovy, width, height, znear, zfar).into()
     }
@@ -137,7 +135,6 @@ impl LineSegment3D {
 
 pub(crate) fn register(m: &Bound<'_, PyModule>) -> PyResult<()> {
     m.add_class::<Camera>()?;
-    // `LookingCamera` remains "private"
     m.add_class::<Scene>()?;
     m.add_class::<LineSegment2D>()?;
     m.add_class::<LineSegment3D>()?;
