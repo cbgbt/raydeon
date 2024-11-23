@@ -10,10 +10,22 @@ check-fmt:
 	cargo fmt --check
 	uv --project pyraydeon run ruff format --check pyraydeon
 
-.PHONY: render-test
-render-test:
+.PHONY: rust-render-test
+rust-render-test:
 	./raydeon/check-examples.sh
+
+.PHONY: reinstall-py-venv
+reinstall-py-venv:
+	echo "Reinstalling native dependencies in virtualenv..."
+	uv --project pyraydeon run --reinstall python -c 'print("Reinstalled dependencies")'
+
+
+.PHONY: py-render-test
+py-render-test: reinstall-py-venv
 	./pyraydeon/check-examples.sh
+
+.PHONY: render-test
+render-test: rust-render-test py-render-test
 
 .PHONY: unit-test
 unit-test:

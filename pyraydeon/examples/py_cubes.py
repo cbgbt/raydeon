@@ -19,36 +19,6 @@ from pyraydeon import (
 )
 
 
-class Quad(CollisionGeometry):
-    def __init__(self, vertices):
-        self.vertices = vertices
-        self.plane = self.compute_plane(vertices)
-
-    def compute_plane(self, points):
-        p1, p2, p3 = points[:3]
-        normal = np.cross(p2 - p1, p3 - p1)
-        normal /= np.linalg.norm(normal)
-        return Plane(p1, normal)
-
-    def is_point_in_face(self, point):
-        edge1 = self.vertices[1] - self.vertices[0]
-        edge2 = self.vertices[3] - self.vertices[0]
-        v = point - self.vertices[0]
-        u1 = np.dot(v, edge1) / np.dot(edge1, edge1)
-        u2 = np.dot(v, edge2) / np.dot(edge2, edge2)
-        return 0 <= u1 <= 1 and 0 <= u2 <= 1
-
-    def hit_by(self, ray) -> HitData | None:
-        intersection = self.plane.hit_by(ray)
-        if intersection is not None and self.is_point_in_face(intersection.hit_point):
-            return intersection
-
-    def bounding_box(self):
-        my_min = np.minimum.reduce(self.vertices)
-        my_max = np.maximum.reduce(self.vertices)
-        return AABB3(my_min, my_max)
-
-
 class RectPrism(Geometry):
     def __init__(
         self,
@@ -117,7 +87,7 @@ class RectPrism(Geometry):
         return f"RectPrism(basis='[{self.right}, {self.up}, {self.fwd}]', dims='[{self.width}, {self.height}, {self.depth}]')"
 
     def collision_geometry(self):
-        return [Quad(self.vertices[face]) for face in self.faces]
+        return [PyQuad(self.vertices[face]) for face in self.faces]
 
     def paths(self, cam):
         edges = set(
@@ -132,6 +102,36 @@ class RectPrism(Geometry):
             for edge in edges
         ]
         return paths
+
+
+class PyQuad(CollisionGeometry):
+    def __init__(self, vertices):
+        self.vertices = vertices
+        self.plane = self.compute_plane(vertices)
+
+    def compute_plane(self, points):
+        p1, p2, p3 = points[:3]
+        normal = np.cross(p2 - p1, p3 - p1)
+        normal /= np.linalg.norm(normal)
+        return Plane(p1, normal)
+
+    def is_point_in_face(self, point):
+        edge1 = self.vertices[1] - self.vertices[0]
+        edge2 = self.vertices[3] - self.vertices[0]
+        v = point - self.vertices[0]
+        u1 = np.dot(v, edge1) / np.dot(edge1, edge1)
+        u2 = np.dot(v, edge2) / np.dot(edge2, edge2)
+        return 0 <= u1 <= 1 and 0 <= u2 <= 1
+
+    def hit_by(self, ray) -> HitData | None:
+        intersection = self.plane.hit_by(ray)
+        if intersection is not None and self.is_point_in_face(intersection.hit_point):
+            return intersection
+
+    def bounding_box(self):
+        my_min = np.minimum.reduce(self.vertices)
+        my_max = np.maximum.reduce(self.vertices)
+        return AABB3(my_min, my_max)
 
 
 up = np.array([-1.0, 1.0, 0.0])

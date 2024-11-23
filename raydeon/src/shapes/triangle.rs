@@ -1,3 +1,4 @@
+//! Provides basic drawing and collision for triangles.
 use std::sync::Arc;
 
 use super::plane::Plane;

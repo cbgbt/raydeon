@@ -1,4 +1,4 @@
-use primitive::Plane;
+use primitive::{Plane, Quad};
 use pyo3::prelude::*;
 use pyo3::types::{PyDict, PyTuple};
 use raydeon::WorldSpace;
@@ -8,8 +8,7 @@ mod primitive;
 
 pub(crate) use primitive::{AxisAlignedCuboid, Tri};
 
-use crate::linear::AABB3;
-use crate::ray::{HitData, Ray};
+use crate::ray::{HitData, Ray, AABB3};
 use crate::scene::{Camera, LineSegment3D};
 
 #[derive(Debug)]
@@ -38,7 +37,7 @@ impl Geometry {
     pub(crate) fn geometry(&self, obj: PyObject) -> Arc<dyn raydeon::Shape<WorldSpace>> {
         match &self.geom {
             InnerGeometry::Native(ref geom) => Arc::clone(geom),
-            InnerGeometry::Py => Arc::new(PythonGeometry::new(obj)),
+            InnerGeometry::Py => Arc::new(PythonGeometry::new(obj, PythonGeometryKind::Draw)),
         }
     }
 }
@@ -82,7 +81,7 @@ impl Geometry {
 
     fn __repr__(slf: &Bound<'_, Self>) -> PyResult<String> {
         let class_name = slf.get_type().qualname()?;
-        Ok(format!("{}<{:?}>", class_name, slf.borrow().geom))
+        Ok(format!("{}<{:#?}>", class_name, slf.borrow().geom))
     }
 }
 
@@ -141,25 +140,35 @@ impl CollisionGeometry {
 
     fn __repr__(slf: &Bound<'_, Self>) -> PyResult<String> {
         let class_name = slf.get_type().qualname()?;
-        Ok(format!("{}<{:?}>", class_name, slf.borrow().geom))
+        Ok(format!("{}<{:#?}>", class_name, slf.borrow().geom))
     }
 }
 
 #[derive(Debug)]
 struct PythonGeometry {
     slf: PyObject,
-    aabb: Option<AABB3>,
+    kind: PythonGeometryKind,
+}
+
+#[derive(Debug)]
+enum PythonGeometryKind {
+    Draw,
+    Collision { aabb: Option<AABB3> },
 }
 
 impl PythonGeometry {
-    fn new(slf: PyObject) -> Self {
-        Self { slf, aabb: None }
+    fn new(slf: PyObject, kind: PythonGeometryKind) -> Self {
+        Self { slf, kind }
     }
 
     fn as_collision_geometry(slf: PyObject) -> Self {
-        let mut ret = Self { slf, aabb: None };
+        let mut ret = Self {
+            slf,
+            kind: PythonGeometryKind::Draw,
+        };
         let aabb = raydeon::CollisionGeometry::bounding_box(&ret);
-        ret.aabb = aabb.map(|aabb| aabb.cast_unit().into());
+        let aabb = aabb.map(|aabb| aabb.cast_unit().into());
+        ret.kind = PythonGeometryKind::Collision { aabb };
         ret
     }
 }
@@ -211,7 +220,7 @@ impl raydeon::Shape<WorldSpace> for PythonGeometry {
 
 impl raydeon::CollisionGeometry<WorldSpace> for PythonGeometry {
     fn hit_by(&self, ray: &raydeon::Ray) -> Option<raydeon::HitData> {
-        if let Some(aabb) = self.aabb {
+        if let PythonGeometryKind::Collision { aabb: Some(aabb) } = self.kind {
             raydeon::shapes::AxisAlignedCuboid::from(aabb.0.cast_unit()).hit_by(ray)?;
         }
         Python::with_gil(|py| {
@@ -243,6 +252,7 @@ pub(crate) fn register(m: &Bound<'_, PyModule>) -> PyResult<()> {
     m.add_class::<AxisAlignedCuboid>()?;
     m.add_class::<Tri>()?;
     m.add_class::<Plane>()?;
+    m.add_class::<Quad>()?;
     m.add_class::<Geometry>()?;
     m.add_class::<CollisionGeometry>()?;
     Ok(())

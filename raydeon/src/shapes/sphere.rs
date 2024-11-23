@@ -1,3 +1,4 @@
+//! Provides collision for spheres.
 use crate::{CollisionGeometry, HitData, Ray, WPoint3, WVec3, WorldSpace};
 
 #[derive(Debug, Copy, Clone)]

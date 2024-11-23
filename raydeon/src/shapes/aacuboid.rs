@@ -1,3 +1,4 @@
+//! Provides basic drawing and collision for axis-aligned cuboids.
 use std::sync::Arc;
 
 use collision::Continuous;

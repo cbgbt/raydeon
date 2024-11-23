@@ -1,5 +1,7 @@
 use super::{CollisionGeometry, Geometry};
 use crate::linear::{Point3, Vec3};
+use numpy::{PyArrayLike1, PyArrayLike2};
+use pyo3::exceptions::PyIndexError;
 use pyo3::prelude::*;
 use raydeon::WorldSpace;
 use std::sync::Arc;
@@ -120,6 +122,75 @@ impl Plane {
         let geom = CollisionGeometry::native(
             Arc::clone(&shape) as Arc<dyn raydeon::CollisionGeometry<WorldSpace>>
         );
+        Ok((Self(shape), geom))
+    }
+}
+
+#[pyclass(frozen, extends=Geometry, subclass)]
+pub(crate) struct Quad(pub(crate) Arc<raydeon::shapes::Quad>);
+
+impl ::std::ops::Deref for Quad {
+    type Target = Arc<raydeon::shapes::Quad>;
+
+    fn deref(&self) -> &Self::Target {
+        &self.0
+    }
+}
+
+impl From<Arc<raydeon::shapes::Quad>> for Quad {
+    fn from(value: Arc<raydeon::shapes::Quad>) -> Self {
+        Self(value)
+    }
+}
+
+#[pymethods]
+impl Quad {
+    #[new]
+    #[pyo3(signature = (origin, basis, dims, tag=0))]
+    fn new(
+        origin: &Bound<'_, PyAny>,
+        basis: PyArrayLike2<'_, f64>,
+        dims: PyArrayLike1<'_, f64>,
+        tag: usize,
+    ) -> PyResult<(Self, Geometry)> {
+        let origin: Point3 = origin.try_into()?;
+        let basis = basis
+            .as_array()
+            .as_slice()
+            .ok_or(PyIndexError::new_err("basis must be 2x3 array"))
+            .and_then(|slice| {
+                if slice.len() != 6 {
+                    Err(PyIndexError::new_err("basis must be 2x3 array"))
+                } else {
+                    Ok(slice)
+                }
+            })
+            .map(|basis| {
+                [
+                    raydeon::Vec3::new(basis[0], basis[1], basis[2]),
+                    raydeon::Vec3::new(basis[3], basis[4], basis[5]),
+                ]
+            })?;
+        let dims = dims
+            .as_array()
+            .as_slice()
+            .ok_or(PyIndexError::new_err("dims must be 1x2 array"))
+            .and_then(|slice| {
+                if slice.len() != 2 {
+                    Err(PyIndexError::new_err("dims must be 1x2 array"))
+                } else {
+                    Ok(slice)
+                }
+            })
+            .map(|dims| [dims[0], dims[1]])?;
+
+        let shape = Arc::new(raydeon::shapes::Quad::tagged(
+            origin.0.cast_unit(),
+            basis,
+            dims,
+            tag,
+        ));
+        let geom = Geometry::native(Arc::clone(&shape) as Arc<dyn raydeon::Shape<WorldSpace>>);
         Ok((Self(shape), geom))
     }
 }

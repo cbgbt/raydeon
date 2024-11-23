@@ -1,3 +1,4 @@
+//! Provides collision for 3D planes.
 use crate::{CollisionGeometry, HitData, Ray, WPoint3, WVec3, WorldSpace};
 
 #[derive(Debug, Copy, Clone)]
