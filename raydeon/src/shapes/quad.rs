@@ -20,14 +20,14 @@ impl Quad {
     }
 
     pub fn tagged(origin: WPoint3, mut basis: [WVec3; 2], dims: [f64; 2], tag: usize) -> Quad {
+        basis[0] = basis[0].normalize();
+        basis[1] = basis[1].normalize();
         let verts = [
             origin,
             origin + basis[0] * dims[0],
             origin + basis[0] * dims[0] + basis[1] * dims[1],
             origin + basis[1] * dims[1],
         ];
-        basis[0] = basis[0].normalize();
-        basis[1] = basis[1].normalize();
         Quad {
             origin,
             basis,
@@ -42,7 +42,7 @@ impl Shape<WorldSpace> for Quad {
     fn collision_geometry(&self) -> Option<Vec<std::sync::Arc<dyn CollisionGeometry<WorldSpace>>>> {
         Some(vec![
             Arc::new(Triangle::new(self.verts[0], self.verts[1], self.verts[3])),
-            Arc::new(Triangle::new(self.verts[2], self.verts[3], self.verts[1])),
+            Arc::new(Triangle::new(self.verts[1], self.verts[2], self.verts[3])),
         ])
     }
 

@@ -20,6 +20,15 @@ class Rhombohedron(Geometry):
         self.basis = basis
         self.dims = dims
 
+        self.faces = [
+            [0, 1, 3, 2],
+            [4, 5, 7, 6],
+            [0, 1, 5, 4],
+            [2, 3, 7, 6],
+            [0, 2, 6, 4],
+            [1, 3, 7, 5],
+        ]
+
         combinations = np.array(np.meshgrid([0, 1], [0, 1], [0, 1])).T.reshape(-1, 3)
         scaled_combinations = combinations * dims
 
@@ -37,14 +46,6 @@ class Rhombohedron(Geometry):
         move_vectors = unit_move_dirs * 0.0015
         self.path_vertices = self.vertices + move_vectors
 
-        self.faces = [
-            [0, 1, 3, 2],  # Bottom face
-            [4, 5, 7, 6],  # Top face
-            [0, 1, 5, 4],  # Front face
-            [2, 3, 7, 6],  # Back face
-            [0, 2, 6, 4],  # Left face
-            [1, 3, 7, 5],  # Right face
-        ]
         self.quads = self.compute_quads()
 
     def __repr__(self):
@@ -87,18 +88,18 @@ class Rhombohedron(Geometry):
 scene = Scene(
     [
         Rhombohedron(
-            origin=np.array([0.0, 0.0, 0.0]),
+            origin=np.array([0.0, 0.0, 0.2]),
             basis=np.array(
                 [
-                    [0.9, 0.5, 0.0],
+                    [0.45, 0.2, -0.3],
                     [-0.3, 1.0, 0.0],
-                    [-0.5, 0.25, -0.7],
+                    [-0.5, 0.0, -0.2],
                 ]
             ),
-            dims=np.array([1.0, 1.0, 1.0]),
+            dims=np.array([2.0, 0.5, 1.0]),
         ),
         Rhombohedron(
-            origin=np.array([2.0, 0.0, -2.0]),
+            origin=np.array([1.0, 0.0, -2.0]),
             basis=np.array(
                 [
                     [-0.9, 0.5, 0.0],
@@ -106,12 +107,12 @@ scene = Scene(
                     [1.5, 0.25, -0.7],
                 ]
             ),
-            dims=np.array([1.0, 1.0, 1.0]),
+            dims=np.array([1.0, 1.0, 0.8]),
         ),
     ]
 )
 
-eye = np.array([0, 0.4, 5])
+eye = np.array([0, -0.5, 5])
 focus = np.array([0, 0.4, 0])
 up = np.array([0, 1, 0])
 
