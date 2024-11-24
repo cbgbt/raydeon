@@ -1,29 +1,88 @@
-use euclid::approxeq::ApproxEq;
 use euclid::*;
+use std::collections::{BTreeSet, HashSet};
+
+/// Trait over metadata associated with each segment.
+///
+/// This can be used to associate material data or other arbtirary information to paths for
+/// post-processing.
+pub trait PathMeta: Clone + std::fmt::Debug + Send + Sync + 'static {}
+impl<P> PathMeta for P where P: Clone + std::fmt::Debug + Send + Sync + 'static {}
+
+#[derive(Debug, Copy, Clone, PartialEq, Eq, Hash)]
+pub struct NoMetadata;
 
 #[derive(Debug, Copy, Clone)]
-pub struct LineSegment3D<Space>
+pub struct LineSegment3D<Space, Metadata>
 where
     Space: Copy + Clone + std::fmt::Debug,
+    Metadata: PathMeta,
 {
-    pub p1: Point3D<f64, Space>,
-    pub p2: Point3D<f64, Space>,
-    pub tag: usize,
+    p1: Point3D<f64, Space>,
+    p2: Point3D<f64, Space>,
+    norm_dir: Vector3D<f64, Space>,
+    length: f64,
+    meta: Metadata,
 }
 
-impl<Space> LineSegment3D<Space>
+impl<Space> LineSegment3D<Space, NoMetadata>
 where
     Space: Copy + Clone + std::fmt::Debug,
 {
     pub fn new(p1: Point3D<f64, Space>, p2: Point3D<f64, Space>) -> Self {
-        Self::tagged(p1, p2, 0)
+        Self::tagged(p1, p2, NoMetadata)
+    }
+}
+
+impl<Space, Metadata> LineSegment3D<Space, Metadata>
+where
+    Space: Copy + Clone + std::fmt::Debug,
+    Metadata: PathMeta,
+{
+    pub fn tagged(p1: Point3D<f64, Space>, p2: Point3D<f64, Space>, meta: Metadata) -> Self {
+        let dir = p2 - p1;
+        let length = dir.length();
+        let norm_dir = dir.normalize();
+        Self {
+            p1,
+            p2,
+            length,
+            norm_dir,
+            meta,
+        }
     }
 
-    pub fn cast_unit<U>(self) -> LineSegment3D<U>
+    pub fn p1(&self) -> Point3D<f64, Space> {
+        self.p1
+    }
+
+    pub fn p2(&self) -> Point3D<f64, Space> {
+        self.p2
+    }
+
+    #[must_use]
+    pub fn midpoint(&self) -> Point3D<f64, Space> {
+        self.p1 + (self.p2 - self.p1) / 2.0
+    }
+
+    pub fn meta(&self) -> &Metadata {
+        &self.meta
+    }
+
+    #[must_use]
+    pub fn dir(&self) -> Vector3D<f64, Space> {
+        self.norm_dir
+    }
+
+    #[must_use]
+    pub fn length(&self) -> f64 {
+        self.length
+    }
+
+    pub fn cast_unit<U>(self) -> LineSegment3D<U, Metadata>
     where
         U: Copy + Clone + std::fmt::Debug,
     {
-        LineSegment3D::new(self.p1.cast_unit(), self.p2.cast_unit())
+        LineSegment3D::tagged(self.p1.cast_unit(), self.p2.cast_unit(), self.meta)
     }
 
     pub fn xy(self) -> LineSegment2D<Space> {
@@ -38,84 +97,115 @@ where
         LineSegment2D::new(self.p1.xz(), self.p2.xz())
     }
 
-    pub fn tagged(p1: Point3D<f64, Space>, p2: Point3D<f64, Space>, tag: usize) -> Self {
-        Self { p1, p2, tag }
-    }
-
     pub fn transform<Dst>(
         &self,
         transformation: &Transform3D<f64, Space, Dst>,
-    ) -> Option<LineSegment3D<Dst>>
+    ) -> Option<LineSegment3D<Dst, Metadata>>
     where
         Dst: Copy + Clone + std::fmt::Debug,
     {
         let (p1, p2) = (self.p1, self.p2);
         let p1t = transformation.transform_point3d(p1);
         let p2t = transformation.transform_point3d(p2);
-        p1t.and_then(|p1| p2t.map(|p2| LineSegment3D::tagged(p1, p2, self.tag)))
+        p1t.and_then(|p1| p2t.map(|p2| LineSegment3D::tagged(p1, p2, self.meta.clone())))
+    }
+
+    pub fn transform_without_metadata<Dst>(
+        &self,
+        transformation: &Transform3D<f64, Space, Dst>,
+    ) -> Option<LineSegment3D<Dst, NoMetadata>>
+    where
+        Dst: Copy + Clone + std::fmt::Debug,
+    {
+        let (p1, p2) = (self.p1, self.p2);
+        let p1t = transformation.transform_point3d(p1);
+        let p2t = transformation.transform_point3d(p2);
+        p1t.and_then(|p1| p2t.map(|p2| LineSegment3D::tagged(p1, p2, NoMetadata)))
     }
 }
 
-pub fn simplify_3d_segments<T>(paths: &[LineSegment3D<T>], threshold: f64) -> Vec<LineSegment3D<T>>
+/// Created when a segment is chopped into several smaller pieces
+pub struct SlicedSegment3D<'parent, Space, Metadata>
 where
-    T: Copy + Clone + std::fmt::Debug,
+    Space: Copy + Clone + std::fmt::Debug,
+    Metadata: PathMeta,
 {
-    let eps: Point3D<f64, T> = Point3D::new(threshold, threshold, threshold);
-    let mut npaths = Vec::new();
-    let mut curr_line: Option<LineSegment3D<T>> = None;
-    let mut curr_pushed = true;
-    for path in paths {
-        let v1 = path.p1;
-        let v2 = path.p2;
-        if curr_line.is_none() {
-            curr_line = Some(*path);
-            curr_pushed = false;
-        } else {
-            let (cv1, cv2) = curr_line
-                .as_ref()
-                .map(|curr_line| (curr_line.p1, curr_line.p2))
-                .unwrap();
-            let curr_line_dir = (cv2 - cv1).normalize();
-            let nline_dir = (v2 - v1).normalize();
+    num_chops: usize,
+    included: BTreeSet<usize>,
+    parent: &'parent LineSegment3D<Space, Metadata>,
+}
 
-            let same_dir = curr_line_dir.approx_eq_eps(&nline_dir, &eps.to_vector())
-                || curr_line_dir.approx_eq_eps(&-nline_dir, &eps.to_vector());
+impl<'parent, Space, Metadata> SlicedSegment3D<'parent, Space, Metadata>
+where
+    Space: Copy + Clone + std::fmt::Debug,
+    Metadata: PathMeta,
+{
+    pub fn new(num_chops: usize, parent: &'parent LineSegment3D<Space, Metadata>) -> Self {
+        let included = (0..num_chops).collect();
+        Self {
+            num_chops,
+            included,
+            parent,
+        }
+    }
 
-            let same_tag = curr_line.as_ref().unwrap().tag == path.tag;
+    pub fn subsegment_len(&self) -> f64 {
+        self.parent.length() / (self.num_chops as f64)
+    }
 
-            if same_tag && same_dir {
-                if cv1.approx_eq_eps(&v1, &eps) {
-                    curr_line = Some(LineSegment3D::tagged(v2, cv2, path.tag));
-                    curr_pushed = false;
-                } else if cv1.approx_eq_eps(&v2, &eps) {
-                    curr_line = Some(LineSegment3D::tagged(v1, cv2, path.tag));
-                    curr_pushed = false;
-                } else if cv2.approx_eq_eps(&v1, &eps) {
-                    curr_line = Some(LineSegment3D::tagged(v2, cv1, path.tag));
-                    curr_pushed = false;
-                } else if cv2.approx_eq_eps(&v2, &eps) {
-                    curr_line = Some(LineSegment3D::tagged(v1, cv1, path.tag));
-                    curr_pushed = false;
-                } else {
-                    npaths.push(curr_line.unwrap());
-                    curr_line = Some(LineSegment3D::tagged(v1, v2, path.tag));
-                    curr_pushed = true;
-                }
-            } else {
-                npaths.push(curr_line.unwrap());
-                curr_line = Some(*path);
-                curr_pushed = false;
+    pub fn num_subsegments(&self) -> usize {
+        self.included.len()
+    }
+
+    fn get_subsegment(&self, ndx: usize) -> LineSegment3D<Space, NoMetadata> {
+        let segment_vec = self.parent.dir() * self.subsegment_len();
+        let start = self.parent.p1 + segment_vec * (ndx as f64);
+        let end = start + segment_vec;
+        LineSegment3D::tagged(start, end, NoMetadata)
+    }
+
+    pub fn subsegments(&self) -> impl Iterator<Item = LineSegment3D<Space, NoMetadata>> + '_ {
+        self.included
+            .iter()
+            .map(move |ndx| self.get_subsegment(*ndx))
+    }
+
+    pub fn remove_subsegment(&mut self, ndx: usize) {
+        self.included.remove(&ndx);
+    }
+
+    pub fn join_slices(&self) -> Vec<LineSegment3D<Space, Metadata>> {
+        if self.included.is_empty() {
+            return Vec::new();
+        }
+        let mut ndx_groups = HashSet::new();
+
+        let mut first = *self.included.first().unwrap();
+        let mut last = first;
+
+        self.included.iter().for_each(|ndx| {
+            if *ndx == first {
+                return;
             }
-        }
-    }
+            if ndx - last == 1 {
+                last = *ndx;
+            } else {
+                ndx_groups.insert(first..=last);
+                first = *ndx;
+                last = first;
+            }
+        });
+        ndx_groups.insert(first..=last);
 
-    if let Some(curr_line) = curr_line {
-        if !curr_pushed {
-            npaths.push(curr_line);
-        }
+        ndx_groups
+            .into_iter()
+            .map(|ndx_group| {
+                let start = self.get_subsegment(*ndx_group.start()).p1;
+                let end = self.get_subsegment(*ndx_group.end()).p2;
+                LineSegment3D::tagged(start, end, self.parent.meta.clone())
+            })
+            .collect()
     }
-
-    npaths
 }
 
 #[derive(Debug, Copy, Clone)]

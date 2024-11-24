@@ -1,5 +1,8 @@
 use pyo3::prelude::*;
 
+#[derive(Copy, Clone, Debug, Default)]
+struct Material;
+
 macro_rules! pywrap {
     ($name:ident, $wraps:ty) => {
         #[derive(Debug, Clone, Copy)]

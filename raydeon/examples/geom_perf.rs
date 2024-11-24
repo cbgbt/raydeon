@@ -72,8 +72,8 @@ const LENGTH: usize = 100;
 const CELL_WIDTH: f64 = 2.0;
 const CELL_LENGTH: f64 = 3.0;
 
-fn generate_scene() -> Vec<Arc<dyn Shape<WorldSpace>>> {
-    let mut scene: Vec<Arc<dyn Shape<WorldSpace>>> = Vec::new();
+fn generate_scene() -> Vec<Arc<dyn Shape<WorldSpace, usize>>> {
+    let mut scene: Vec<Arc<dyn Shape<_, _>>> = Vec::new();
 
     for i in 0..WIDTH {
         for j in 0..LENGTH {

@@ -10,10 +10,11 @@ pub(crate) use primitive::{AxisAlignedCuboid, Tri};
 
 use crate::ray::{HitData, Ray, AABB3};
 use crate::scene::{Camera, LineSegment3D};
+use crate::Material;
 
 #[derive(Debug)]
 enum InnerGeometry {
-    Native(Arc<dyn raydeon::Shape<WorldSpace>>),
+    Native(Arc<dyn raydeon::Shape<WorldSpace, Material>>),
     Py,
 }
 
@@ -24,7 +25,7 @@ pub(crate) struct Geometry {
 }
 
 impl Geometry {
-    pub(crate) fn native(geom: Arc<dyn raydeon::Shape<WorldSpace>>) -> Self {
+    pub(crate) fn native(geom: Arc<dyn raydeon::Shape<WorldSpace, Material>>) -> Self {
         let geom = InnerGeometry::Native(geom);
         Self { geom }
     }
@@ -34,7 +35,7 @@ impl Geometry {
         Self { geom }
     }
 
-    pub(crate) fn geometry(&self, obj: PyObject) -> Arc<dyn raydeon::Shape<WorldSpace>> {
+    pub(crate) fn geometry(&self, obj: PyObject) -> Arc<dyn raydeon::Shape<WorldSpace, Material>> {
         match &self.geom {
             InnerGeometry::Native(ref geom) => Arc::clone(geom),
             InnerGeometry::Py => Arc::new(PythonGeometry::new(obj, PythonGeometryKind::Draw)),
@@ -173,7 +174,7 @@ impl PythonGeometry {
     }
 }
 
-impl raydeon::Shape<WorldSpace> for PythonGeometry {
+impl raydeon::Shape<WorldSpace, Material> for PythonGeometry {
     fn collision_geometry(&self) -> Option<Vec<Arc<dyn raydeon::CollisionGeometry<WorldSpace>>>> {
         let collision_geometry: Option<_> = Python::with_gil(|py| {
             let inner = self.slf.bind(py);
@@ -200,7 +201,7 @@ impl raydeon::Shape<WorldSpace> for PythonGeometry {
     fn paths(
         &self,
         cam: &raydeon::Camera<raydeon::Perspective, raydeon::Observation>,
-    ) -> Vec<raydeon::path::LineSegment3D<WorldSpace>> {
+    ) -> Vec<raydeon::path::LineSegment3D<WorldSpace, Material>> {
         let segments: Option<_> = Python::with_gil(|py| {
             let inner = self.slf.bind(py);
             let cam = Camera::from(*cam);

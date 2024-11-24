@@ -8,7 +8,7 @@ pub mod shapes;
 
 use std::sync::Arc;
 
-use path::LineSegment3D;
+pub use path::{LineSegment3D, PathMeta};
 pub use ray::{HitData, Ray};
 
 pub use camera::{Camera, NoObservation, NoPerspective, Observation, Perspective};
@@ -44,12 +44,13 @@ pub type WCTransform = Transform3<WorldSpace, CameraSpace>;
 pub type WWTransform = Transform3<WorldSpace, WorldSpace>;
 pub type CCTransform = Transform3<CameraSpace, CameraSpace>;
 
-pub trait Shape<Space>: Send + Sync + std::fmt::Debug
+pub trait Shape<Space, Meta>: Send + Sync + std::fmt::Debug
 where
     Space: Sized + Send + Sync + std::fmt::Debug + Copy + Clone,
+    Meta: PathMeta,
 {
     fn collision_geometry(&self) -> Option<Vec<Arc<dyn CollisionGeometry<Space>>>>;
-    fn paths(&self, cam: &Camera<Perspective, Observation>) -> Vec<LineSegment3D<Space>>;
+    fn paths(&self, cam: &Camera<Perspective, Observation>) -> Vec<LineSegment3D<Space, Meta>>;
 }
 
 pub trait CollisionGeometry<Space>: Send + Sync + std::fmt::Debug

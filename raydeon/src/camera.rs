@@ -1,4 +1,5 @@
 use euclid::Transform3D;
+use path::SlicedSegment3D;
 
 use crate::*;
 
@@ -165,12 +166,12 @@ impl Camera<Perspective, Observation> {
     }
 
     /// Chops a line segment into subsegments based on distance from camera
-    pub fn chop_segment(
+    pub fn chop_segment<'a, P: PathMeta>(
         &self,
-        segment: &LineSegment3D<WorldSpace>,
-    ) -> Vec<LineSegment3D<WorldSpace>> {
-        let p1 = segment.p1.to_vector();
-        let p2 = segment.p2.to_vector();
+        segment: &'a LineSegment3D<WorldSpace, P>,
+    ) -> Option<SlicedSegment3D<'a, WorldSpace, P>> {
+        let p1 = segment.p1().to_vector();
+        let p2 = segment.p2().to_vector();
 
         // Transform the points to camera space, then chop based on the pixel length
         let transformation = self.camera_transformation();
@@ -189,35 +190,18 @@ impl Camera<Perspective, Observation> {
         let chunk_count = canvas_points
             .map(|(p1t, p2t)| {
                 let rough_chop_size = (p2t - p1t).length() / (pen_px_size as f64 / 2.0);
-                rough_chop_size.round_ties_even() as u32
+                rough_chop_size.round_ties_even() as usize
             })
             .unwrap_or_else(|| {
                 let rough_chop_size = self.min_step_size();
-                ((p2 - p1).length() / rough_chop_size).round_ties_even() as u32
+                ((p2 - p1).length() / rough_chop_size).round_ties_even() as usize
             });
 
         if chunk_count == 0 {
-            return vec![];
+            None
+        } else {
+            Some(SlicedSegment3D::new(chunk_count, segment))
         }
-        if chunk_count == 1 {
-            return vec![*segment];
-        }
-
-        let segment_diff = p2 - p1;
-        let segment_length = segment_diff.length();
-
-        let true_chunk_len = segment_length / chunk_count as f64;
-        let true_chunk_len = f64::min(true_chunk_len, segment_length);
-
-        let segment_dir = segment_diff.normalize();
-        let chunk_vec = segment_dir * true_chunk_len;
-        (0..chunk_count)
-            .map(|segment_ndx| {
-                let p1 = segment.p1 + (chunk_vec * (segment_ndx as f64));
-                let p2 = p1 + chunk_vec;
-                LineSegment3D::tagged(p1, p2, segment.tag)
-            })
-            .collect()
     }
 }
 

@@ -5,40 +5,45 @@ use collision::Continuous;
 
 use crate::path::LineSegment3D;
 use crate::{
-    Camera, CollisionGeometry, HitData, Observation, Perspective, Ray, Shape, WPoint3, WVec3,
-    WorldSpace, AABB3,
+    Camera, CollisionGeometry, HitData, Observation, PathMeta, Perspective, Ray, Shape, WPoint3,
+    WVec3, WorldSpace, AABB3,
 };
 
 #[derive(Debug, Copy, Clone)]
 #[cfg_attr(test, derive(PartialEq))]
-pub struct AxisAlignedCuboid {
+pub struct AxisAlignedCuboid<P>
+where
+    P: PathMeta,
+{
     pub min: WVec3,
     pub max: WVec3,
-    pub tag: usize,
+    pub meta: P,
 }
 
-impl AxisAlignedCuboid {
-    pub fn new(min: WVec3, max: WVec3) -> AxisAlignedCuboid {
+impl AxisAlignedCuboid<usize> {
+    pub fn new(min: WVec3, max: WVec3) -> AxisAlignedCuboid<usize> {
         Self::tagged(min, max, 0)
     }
+}
 
-    pub fn tagged(min: WVec3, max: WVec3, tag: usize) -> AxisAlignedCuboid {
-        AxisAlignedCuboid { min, max, tag }
+impl<P: PathMeta> AxisAlignedCuboid<P> {
+    pub fn tagged(min: WVec3, max: WVec3, meta: P) -> AxisAlignedCuboid<P> {
+        AxisAlignedCuboid { min, max, meta }
     }
 }
 
-impl From<AABB3<WorldSpace>> for AxisAlignedCuboid {
+impl From<AABB3<WorldSpace>> for AxisAlignedCuboid<usize> {
     fn from(value: AABB3<WorldSpace>) -> Self {
         Self::new(value.min.to_vector(), value.max.to_vector())
     }
 }
 
-impl Shape<WorldSpace> for AxisAlignedCuboid {
+impl<P: PathMeta> Shape<WorldSpace, P> for AxisAlignedCuboid<P> {
     fn collision_geometry(&self) -> Option<Vec<Arc<dyn CollisionGeometry<WorldSpace>>>> {
-        Some(vec![Arc::new(*self)])
+        Some(vec![Arc::new(self.clone())])
     }
 
-    fn paths(&self, _cam: &Camera<Perspective, Observation>) -> Vec<LineSegment3D<WorldSpace>> {
+    fn paths(&self, _cam: &Camera<Perspective, Observation>) -> Vec<LineSegment3D<WorldSpace, P>> {
         let expand = (self.max - self.min).normalize() * 0.0015;
         let pathmin = self.min - expand;
         let pathmax = self.max + expand;
@@ -57,23 +62,23 @@ impl Shape<WorldSpace> for AxisAlignedCuboid {
         let p8 = WPoint3::new(x1, y2, z2);
 
         vec![
-            LineSegment3D::tagged(p1, p2, self.tag),
-            LineSegment3D::tagged(p2, p3, self.tag),
-            LineSegment3D::tagged(p3, p4, self.tag),
-            LineSegment3D::tagged(p4, p1, self.tag),
-            LineSegment3D::tagged(p5, p6, self.tag),
-            LineSegment3D::tagged(p6, p7, self.tag),
-            LineSegment3D::tagged(p7, p8, self.tag),
-            LineSegment3D::tagged(p8, p5, self.tag),
-            LineSegment3D::tagged(p1, p5, self.tag),
-            LineSegment3D::tagged(p2, p6, self.tag),
-            LineSegment3D::tagged(p3, p7, self.tag),
-            LineSegment3D::tagged(p4, p8, self.tag),
+            LineSegment3D::tagged(p1, p2, self.meta.clone()),
+            LineSegment3D::tagged(p2, p3, self.meta.clone()),
+            LineSegment3D::tagged(p3, p4, self.meta.clone()),
+            LineSegment3D::tagged(p4, p1, self.meta.clone()),
+            LineSegment3D::tagged(p5, p6, self.meta.clone()),
+            LineSegment3D::tagged(p6, p7, self.meta.clone()),
+            LineSegment3D::tagged(p7, p8, self.meta.clone()),
+            LineSegment3D::tagged(p8, p5, self.meta.clone()),
+            LineSegment3D::tagged(p1, p5, self.meta.clone()),
+            LineSegment3D::tagged(p2, p6, self.meta.clone()),
+            LineSegment3D::tagged(p3, p7, self.meta.clone()),
+            LineSegment3D::tagged(p4, p8, self.meta.clone()),
         ]
     }
 }
 
-impl CollisionGeometry<WorldSpace> for AxisAlignedCuboid {
+impl<P: PathMeta> CollisionGeometry<WorldSpace> for AxisAlignedCuboid<P> {
     fn hit_by(&self, ray: &Ray) -> Option<HitData> {
         let aabb = collision::Aabb3::new(
             cgmath::Point3::new(self.min.x, self.min.y, self.min.z),

@@ -4,25 +4,27 @@ use std::sync::Arc;
 use super::plane::Plane;
 use crate::path::LineSegment3D;
 use crate::{
-    Camera, CollisionGeometry, HitData, Observation, Perspective, Ray, Shape, WPoint3, WVec3,
-    WorldSpace,
+    Camera, CollisionGeometry, HitData, Observation, PathMeta, Perspective, Ray, Shape, WPoint3,
+    WVec3, WorldSpace,
 };
 
 #[derive(Debug, Copy, Clone)]
 #[cfg_attr(test, derive(PartialEq))]
-pub struct Triangle {
+pub struct Triangle<P: PathMeta> {
     pub verts: [WPoint3; 3],
     pub edges: [WVec3; 3],
     pub plane: Plane,
-    pub tag: usize,
+    pub meta: P,
 }
 
-impl Triangle {
-    pub fn new(v0: WPoint3, v1: WPoint3, v2: WPoint3) -> Triangle {
+impl Triangle<usize> {
+    pub fn new(v0: WPoint3, v1: WPoint3, v2: WPoint3) -> Self {
         Self::tagged(v0, v1, v2, 0)
     }
+}
 
-    pub fn tagged(v0: WPoint3, v1: WPoint3, v2: WPoint3, tag: usize) -> Triangle {
+impl<P: PathMeta> Triangle<P> {
+    pub fn tagged(v0: WPoint3, v1: WPoint3, v2: WPoint3, meta: P) -> Triangle<P> {
         let verts = [v0, v1, v2];
         let edges = [v1 - v0, v2 - v1, v0 - v2];
         let normal = (v1 - v0).cross(v2 - v0).normalize();
@@ -31,17 +33,17 @@ impl Triangle {
             verts,
             edges,
             plane,
-            tag,
+            meta,
         }
     }
 }
 
-impl Shape<WorldSpace> for Triangle {
+impl<P: PathMeta> Shape<WorldSpace, P> for Triangle<P> {
     fn collision_geometry(&self) -> Option<Vec<std::sync::Arc<dyn CollisionGeometry<WorldSpace>>>> {
-        Some(vec![Arc::new(*self)])
+        Some(vec![Arc::new(self.clone())])
     }
 
-    fn paths(&self, _cam: &Camera<Perspective, Observation>) -> Vec<LineSegment3D<WorldSpace>> {
+    fn paths(&self, _cam: &Camera<Perspective, Observation>) -> Vec<LineSegment3D<WorldSpace, P>> {
         let v0 = self.verts[0];
         let v1 = self.verts[1];
         let v2 = self.verts[2];
@@ -52,14 +54,14 @@ impl Shape<WorldSpace> for Triangle {
         let v2 = v2 + (v2 - centroid).normalize() * 0.015;
 
         vec![
-            LineSegment3D::tagged(v0, v1, self.tag),
-            LineSegment3D::tagged(v1, v2, self.tag),
-            LineSegment3D::tagged(v2, v0, self.tag),
+            LineSegment3D::tagged(v0, v1, self.meta.clone()),
+            LineSegment3D::tagged(v1, v2, self.meta.clone()),
+            LineSegment3D::tagged(v2, v0, self.meta.clone()),
         ]
     }
 }
 
-impl CollisionGeometry<WorldSpace> for Triangle {
+impl<P: PathMeta> CollisionGeometry<WorldSpace> for Triangle<P> {
     fn hit_by(&self, ray: &Ray) -> Option<HitData> {
         let p_hit = self.plane.hit_by(ray);
 

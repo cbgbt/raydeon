@@ -6,6 +6,7 @@ use raydeon::WorldSpace;
 
 use crate::linear::{ArbitrarySpace, Point2, Point3, Vec3};
 use crate::shapes::Geometry;
+use crate::Material;
 
 pywrap!(Camera, raydeon::Camera<raydeon::Perspective, raydeon::Observation>);
 
@@ -43,14 +44,14 @@ impl Camera {
 
 #[pyclass(frozen)]
 pub(crate) struct Scene {
-    scene: Arc<raydeon::Scene>,
+    scene: Arc<raydeon::Scene<Material>>,
 }
 
 #[pymethods]
 impl Scene {
     #[new]
     fn new(py: Python, geometry: Vec<PyObject>) -> PyResult<Self> {
-        let geometry: Vec<Arc<dyn raydeon::Shape<WorldSpace>>> = geometry
+        let geometry: Vec<Arc<dyn raydeon::Shape<WorldSpace, Material>>> = geometry
             .into_iter()
             .map(|g| {
                 let geom: Py<Geometry> = g.extract(py)?;
@@ -106,7 +107,7 @@ impl LineSegment2D {
     }
 }
 
-pywrap!(LineSegment3D, raydeon::path::LineSegment3D<ArbitrarySpace>);
+pywrap!(LineSegment3D, raydeon::path::LineSegment3D<ArbitrarySpace, Material>);
 
 #[pymethods]
 impl LineSegment3D {
@@ -114,17 +115,17 @@ impl LineSegment3D {
     fn new(p1: &Bound<'_, PyAny>, p2: &Bound<'_, PyAny>) -> PyResult<Self> {
         let p1 = Point3::try_from(p1)?;
         let p2 = Point3::try_from(p2)?;
-        Ok(raydeon::path::LineSegment3D::new(p1.cast_unit(), p2.cast_unit()).into())
+        Ok(raydeon::path::LineSegment3D::tagged(p1.cast_unit(), p2.cast_unit(), Material).into())
     }
 
     #[getter]
     fn p1<'py>(&self, py: Python<'py>) -> Bound<'py, PyArray<f64, Ix1>> {
-        PyArray::from_slice_bound(py, &self.0.p1.to_array())
+        PyArray::from_slice_bound(py, &self.0.p1().to_array())
     }
 
     #[getter]
     fn p2<'py>(&self, py: Python<'py>) -> Bound<'py, PyArray<f64, Ix1>> {
-        PyArray::from_slice_bound(py, &self.0.p2.to_array())
+        PyArray::from_slice_bound(py, &self.0.p2().to_array())
     }
 
     fn __repr__(slf: &Bound<'_, Self>) -> PyResult<String> {
