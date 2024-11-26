@@ -7,7 +7,7 @@ fn main() {
         .format_timestamp_nanos()
         .init();
 
-    let scene = Scene::new(vec![Arc::new(AxisAlignedCuboid::new(
+    let scene = Scene::new().with_geometry(vec![Arc::new(AxisAlignedCuboid::new(
         WVec3::new(-1.0, -1.0, -1.0),
         WVec3::new(1.0, 1.0, 1.0),
     ))]);
@@ -17,8 +17,8 @@ fn main() {
     let up = WVec3::new(0.0, 0.0, 1.0);
 
     let fovy = 50.0;
-    let width = 1024.0;
-    let height = 1024.0;
+    let width = 1024;
+    let height = 1024;
     let znear = 0.1;
     let zfar = 10.0;
 

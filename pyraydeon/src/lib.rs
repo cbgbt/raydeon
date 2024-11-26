@@ -1,8 +1,5 @@
 use pyo3::prelude::*;
 
-#[derive(Copy, Clone, Debug, Default)]
-struct Material;
-
 macro_rules! pywrap {
     ($name:ident, $wraps:ty) => {
         #[derive(Debug, Clone, Copy)]
@@ -25,7 +22,9 @@ macro_rules! pywrap {
     };
 }
 
+mod light;
 mod linear;
+mod material;
 mod ray;
 mod scene;
 mod shapes;
@@ -37,5 +36,7 @@ fn pyraydeon(m: &Bound<'_, PyModule>) -> PyResult<()> {
     crate::shapes::register(m)?;
     crate::scene::register(m)?;
     crate::ray::register(m)?;
+    crate::material::register(m)?;
+    crate::light::register(m)?;
     Ok(())
 }

@@ -1,25 +1,27 @@
 use super::{CollisionGeometry, Geometry};
 use crate::linear::{Point3, Vec3};
-use crate::Material;
-use numpy::{PyArrayLike1, PyArrayLike2};
+use crate::material::Material;
+use numpy::{Ix1, PyArray, PyArrayLike1, PyArrayLike2};
 use pyo3::exceptions::PyIndexError;
 use pyo3::prelude::*;
 use raydeon::WorldSpace;
 use std::sync::Arc;
 
+type RMaterial = raydeon::material::Material;
+
 #[pyclass(frozen, extends=Geometry, subclass)]
-pub(crate) struct AxisAlignedCuboid(pub(crate) Arc<raydeon::shapes::AxisAlignedCuboid<Material>>);
+pub(crate) struct AxisAlignedCuboid(pub(crate) Arc<raydeon::shapes::AxisAlignedCuboid<RMaterial>>);
 
 impl ::std::ops::Deref for AxisAlignedCuboid {
-    type Target = Arc<raydeon::shapes::AxisAlignedCuboid<Material>>;
+    type Target = Arc<raydeon::shapes::AxisAlignedCuboid<RMaterial>>;
 
     fn deref(&self) -> &Self::Target {
         &self.0
     }
 }
 
-impl From<Arc<raydeon::shapes::AxisAlignedCuboid<Material>>> for AxisAlignedCuboid {
-    fn from(value: Arc<raydeon::shapes::AxisAlignedCuboid<Material>>) -> Self {
+impl From<Arc<raydeon::shapes::AxisAlignedCuboid<RMaterial>>> for AxisAlignedCuboid {
+    fn from(value: Arc<raydeon::shapes::AxisAlignedCuboid<RMaterial>>) -> Self {
         Self(value)
     }
 }
@@ -27,36 +29,41 @@ impl From<Arc<raydeon::shapes::AxisAlignedCuboid<Material>>> for AxisAlignedCubo
 #[pymethods]
 impl AxisAlignedCuboid {
     #[new]
-    #[pyo3(signature = (min, max))]
-    fn new(min: &Bound<'_, PyAny>, max: &Bound<'_, PyAny>) -> PyResult<(Self, Geometry)> {
+    #[pyo3(signature = (min, max, material=None))]
+    fn new(
+        min: &Bound<'_, PyAny>,
+        max: &Bound<'_, PyAny>,
+        material: Option<Material>,
+    ) -> PyResult<(Self, Geometry)> {
         let min: Vec3 = min.try_into()?;
         let max: Vec3 = max.try_into()?;
 
         let shape = Arc::new(raydeon::shapes::AxisAlignedCuboid::tagged(
             min.cast_unit(),
             max.cast_unit(),
-            Material,
+            material.unwrap_or_default().0,
         ));
         let geom =
-            Geometry::native(Arc::clone(&shape) as Arc<dyn raydeon::Shape<WorldSpace, Material>>);
+            Geometry::native(Arc::clone(&shape)
+                as Arc<dyn raydeon::Shape<WorldSpace, raydeon::material::Material>>);
 
         Ok((Self(shape), geom))
     }
 }
 
 #[pyclass(frozen, extends=Geometry, subclass)]
-pub(crate) struct Tri(pub(crate) Arc<raydeon::shapes::Triangle<Material>>);
+pub(crate) struct Tri(pub(crate) Arc<raydeon::shapes::Triangle<RMaterial>>);
 
 impl ::std::ops::Deref for Tri {
-    type Target = Arc<raydeon::shapes::Triangle<Material>>;
+    type Target = Arc<raydeon::shapes::Triangle<RMaterial>>;
 
     fn deref(&self) -> &Self::Target {
         &self.0
     }
 }
 
-impl From<Arc<raydeon::shapes::Triangle<Material>>> for Tri {
-    fn from(value: Arc<raydeon::shapes::Triangle<Material>>) -> Self {
+impl From<Arc<raydeon::shapes::Triangle<RMaterial>>> for Tri {
+    fn from(value: Arc<raydeon::shapes::Triangle<RMaterial>>) -> Self {
         Self(value)
     }
 }
@@ -64,11 +71,12 @@ impl From<Arc<raydeon::shapes::Triangle<Material>>> for Tri {
 #[pymethods]
 impl Tri {
     #[new]
-    #[pyo3(signature = (p1, p2, p3))]
+    #[pyo3(signature = (p1, p2, p3, material=None))]
     fn new(
         p1: &Bound<'_, PyAny>,
         p2: &Bound<'_, PyAny>,
         p3: &Bound<'_, PyAny>,
+        material: Option<Material>,
     ) -> PyResult<(Self, Geometry)> {
         let p1: Point3 = p1.try_into()?;
         let p2: Point3 = p2.try_into()?;
@@ -78,10 +86,10 @@ impl Tri {
             p1.cast_unit(),
             p2.cast_unit(),
             p3.cast_unit(),
-            Material,
+            material.unwrap_or_default().0,
         ));
         let geom =
-            Geometry::native(Arc::clone(&shape) as Arc<dyn raydeon::Shape<WorldSpace, Material>>);
+            Geometry::native(Arc::clone(&shape) as Arc<dyn raydeon::Shape<WorldSpace, RMaterial>>);
         Ok((Self(shape), geom))
     }
 }
@@ -122,21 +130,72 @@ impl Plane {
         );
         Ok((Self(shape), geom))
     }
+
+    #[getter]
+    fn point<'py>(&self, py: Python<'py>) -> Bound<'py, PyArray<f64, Ix1>> {
+        PyArray::from_slice_bound(py, &self.0.point.to_array())
+    }
+
+    #[getter]
+    fn normal<'py>(&self, py: Python<'py>) -> Bound<'py, PyArray<f64, Ix1>> {
+        PyArray::from_slice_bound(py, &self.0.normal.to_array())
+    }
 }
 
-#[pyclass(frozen, extends=Geometry, subclass)]
-pub(crate) struct Quad(pub(crate) Arc<raydeon::shapes::Quad<Material>>);
+#[pyclass(frozen, extends=CollisionGeometry, subclass)]
+pub(crate) struct Sphere(pub(crate) Arc<raydeon::shapes::Sphere>);
 
-impl ::std::ops::Deref for Quad {
-    type Target = Arc<raydeon::shapes::Quad<Material>>;
+impl ::std::ops::Deref for Sphere {
+    type Target = Arc<raydeon::shapes::Sphere>;
 
     fn deref(&self) -> &Self::Target {
         &self.0
     }
 }
 
-impl From<Arc<raydeon::shapes::Quad<Material>>> for Quad {
-    fn from(value: Arc<raydeon::shapes::Quad<Material>>) -> Self {
+impl From<Arc<raydeon::shapes::Sphere>> for Sphere {
+    fn from(value: Arc<raydeon::shapes::Sphere>) -> Self {
+        Self(value)
+    }
+}
+
+#[pymethods]
+impl Sphere {
+    #[new]
+    fn new(point: &Bound<'_, PyAny>, radius: f64) -> PyResult<(Self, CollisionGeometry)> {
+        let point: Point3 = point.try_into()?;
+
+        let shape = Arc::new(raydeon::shapes::Sphere::new(point.0.cast_unit(), radius));
+        let geom = CollisionGeometry::native(
+            Arc::clone(&shape) as Arc<dyn raydeon::CollisionGeometry<WorldSpace>>
+        );
+        Ok((Self(shape), geom))
+    }
+
+    #[getter]
+    fn center<'py>(&self, py: Python<'py>) -> Bound<'py, PyArray<f64, Ix1>> {
+        PyArray::from_slice_bound(py, &self.0.center.to_array())
+    }
+
+    #[getter]
+    fn radius(&self) -> f64 {
+        self.0.radius
+    }
+}
+
+#[pyclass(frozen, extends=Geometry, subclass)]
+pub(crate) struct Quad(pub(crate) Arc<raydeon::shapes::Quad<RMaterial>>);
+
+impl ::std::ops::Deref for Quad {
+    type Target = Arc<raydeon::shapes::Quad<RMaterial>>;
+
+    fn deref(&self) -> &Self::Target {
+        &self.0
+    }
+}
+
+impl From<Arc<raydeon::shapes::Quad<RMaterial>>> for Quad {
+    fn from(value: Arc<raydeon::shapes::Quad<RMaterial>>) -> Self {
         Self(value)
     }
 }
@@ -144,11 +203,12 @@ impl From<Arc<raydeon::shapes::Quad<Material>>> for Quad {
 #[pymethods]
 impl Quad {
     #[new]
-    #[pyo3(signature = (origin, basis, dims))]
+    #[pyo3(signature = (origin, basis, dims, material=None))]
     fn new(
         origin: &Bound<'_, PyAny>,
         basis: PyArrayLike2<'_, f64>,
         dims: PyArrayLike1<'_, f64>,
+        material: Option<Material>,
     ) -> PyResult<(Self, Geometry)> {
         let origin: Point3 = origin.try_into()?;
         let basis = basis
@@ -185,10 +245,10 @@ impl Quad {
             origin.0.cast_unit(),
             basis,
             dims,
-            Material,
+            material.unwrap_or_default().0,
         ));
         let geom =
-            Geometry::native(Arc::clone(&shape) as Arc<dyn raydeon::Shape<WorldSpace, Material>>);
+            Geometry::native(Arc::clone(&shape) as Arc<dyn raydeon::Shape<WorldSpace, RMaterial>>);
         Ok((Self(shape), geom))
     }
 }

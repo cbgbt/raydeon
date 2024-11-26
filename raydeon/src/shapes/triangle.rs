@@ -39,6 +39,10 @@ impl<P: PathMeta> Triangle<P> {
 }
 
 impl<P: PathMeta> Shape<WorldSpace, P> for Triangle<P> {
+    fn metadata(&self) -> P {
+        self.meta.clone()
+    }
+
     fn collision_geometry(&self) -> Option<Vec<std::sync::Arc<dyn CollisionGeometry<WorldSpace>>>> {
         Some(vec![Arc::new(self.clone())])
     }
@@ -146,7 +150,11 @@ mod test {
 
         assert_eq!(
             tri1.hit_by(&ray1),
-            Some(HitData::new(WPoint3::new(0.25, 0.25, 0.0), 2.0))
+            Some(HitData::new(
+                WPoint3::new(0.25, 0.25, 0.0),
+                2.0,
+                (0.0, 0.0, -1.0)
+            ))
         );
 
         assert_eq!(tri1.hit_by(&ray2), None);
@@ -154,7 +162,11 @@ mod test {
 
         assert_eq!(
             tri1.hit_by(&ray4),
-            Some(HitData::new(WPoint3::new(0.1, 0.01, 0.0), 2.0))
+            Some(HitData::new(
+                WPoint3::new(0.1, 0.01, 0.0),
+                2.0,
+                (0.0, 0.0, -1.0)
+            ))
         );
     }
 }

@@ -1,4 +1,4 @@
-use euclid::Transform3D;
+use euclid::{Point3D, Transform3D};
 use path::SlicedSegment3D;
 
 use crate::*;
@@ -55,8 +55,8 @@ impl Observation {
 #[derive(Debug, Copy, Clone)]
 pub struct Perspective {
     pub fovy: f64,
-    pub width: f64,
-    pub height: f64,
+    pub width: usize,
+    pub height: usize,
     pub aspect: f64,
     pub znear: f64,
     pub zfar: f64,
@@ -64,7 +64,7 @@ pub struct Perspective {
 
 impl Default for Perspective {
     fn default() -> Self {
-        Self::new(45.0, 1920.0, 1080.0, 0.1, 100.0)
+        Self::new(45.0, 1920, 1080, 0.1, 100.0)
     }
 }
 
@@ -73,8 +73,8 @@ impl Default for Perspective {
 pub struct NoPerspective;
 
 impl Perspective {
-    pub fn new(fovy: f64, width: f64, height: f64, znear: f64, zfar: f64) -> Self {
-        let aspect = width / height;
+    pub fn new(fovy: f64, width: usize, height: usize, znear: f64, zfar: f64) -> Self {
+        let aspect = width as f64 / height as f64;
         Self {
             fovy,
             width,
@@ -128,8 +128,8 @@ impl<P, O> Camera<P, O> {
     pub fn perspective(
         self,
         fovy: f64,
-        width: f64,
-        height: f64,
+        width: usize,
+        height: usize,
         znear: f64,
         zfar: f64,
     ) -> Camera<Perspective, O> {
@@ -158,9 +158,9 @@ impl Camera<Perspective, Observation> {
         self.canvas_transformation()
             .then_translate(Vec3::new(1.0, 1.0, 0.0))
             .then_scale(
-                self.perspective.width / 2.0,
-                self.perspective.height / 2.0,
-                0.0,
+                self.perspective.width as f64 / 2.0,
+                self.perspective.height as f64 / 2.0,
+                1.0,
             )
             .with_destination()
     }
@@ -183,13 +183,9 @@ impl Camera<Perspective, Observation> {
                     .map(|p2t| (p1t.xy(), p2t.xy()))
             });
 
-        // The pixel fidelity of the drawing instrument.
-        // TODO: Make this configurable
-        let pen_px_size = 4;
-
         let chunk_count = canvas_points
             .map(|(p1t, p2t)| {
-                let rough_chop_size = (p2t - p1t).length() / (pen_px_size as f64 / 2.0);
+                let rough_chop_size = (p2t - p1t).length() / (PEN_PX_SIZE / 2.0);
                 rough_chop_size.round_ties_even() as usize
             })
             .unwrap_or_else(|| {
@@ -203,6 +199,22 @@ impl Camera<Perspective, Observation> {
             Some(SlicedSegment3D::new(chunk_count, segment))
         }
     }
+
+    pub fn ray_for_px_coords(&self, x: f64, y: f64) -> Ray {
+        let pix_ndc = Point3D::new(x, y, 0.0);
+
+        let world_coord = self
+            .camera_transformation()
+            .inverse()
+            .unwrap()
+            .transform_point3d(pix_ndc)
+            .unwrap();
+
+        Ray {
+            point: self.observation.eye,
+            dir: (world_coord.to_vector() - self.observation.eye.to_vector()).normalize(),
+        }
+    }
 }
 
 impl<O> Camera<Perspective, O> {
@@ -213,7 +225,7 @@ impl<O> Camera<Perspective, O> {
         let xmax = ymax * p.aspect;
 
         // TODO: We can apply scaling here based on pen size
-        let effective_dims: Vec2<()> = Vec2::new(p.width, p.height);
+        let effective_dims: Vec2<()> = Vec2::new(p.width as f64, p.height as f64);
 
         let znear_dims = Vec2::new(xmax, ymax) * 2.0;
         let est_min_pix = znear_dims.component_div(effective_dims);

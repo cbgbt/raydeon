@@ -44,6 +44,10 @@ impl<P: PathMeta> Quad<P> {
 }
 
 impl<P: PathMeta> Shape<WorldSpace, P> for Quad<P> {
+    fn metadata(&self) -> P {
+        self.meta.clone()
+    }
+
     fn collision_geometry(&self) -> Option<Vec<std::sync::Arc<dyn CollisionGeometry<WorldSpace>>>> {
         Some(vec![
             Arc::new(Triangle::new(self.verts[0], self.verts[1], self.verts[3])),

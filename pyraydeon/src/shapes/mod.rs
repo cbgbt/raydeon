@@ -1,4 +1,4 @@
-use primitive::{Plane, Quad};
+use primitive::{Plane, Quad, Sphere};
 use pyo3::prelude::*;
 use pyo3::types::{PyDict, PyTuple};
 use raydeon::WorldSpace;
@@ -8,13 +8,15 @@ mod primitive;
 
 pub(crate) use primitive::{AxisAlignedCuboid, Tri};
 
+use crate::material::Material;
 use crate::ray::{HitData, Ray, AABB3};
 use crate::scene::{Camera, LineSegment3D};
-use crate::Material;
+
+type RMaterial = raydeon::material::Material;
 
 #[derive(Debug)]
 enum InnerGeometry {
-    Native(Arc<dyn raydeon::Shape<WorldSpace, Material>>),
+    Native(Arc<dyn raydeon::Shape<WorldSpace, RMaterial>>),
     Py,
 }
 
@@ -25,7 +27,7 @@ pub(crate) struct Geometry {
 }
 
 impl Geometry {
-    pub(crate) fn native(geom: Arc<dyn raydeon::Shape<WorldSpace, Material>>) -> Self {
+    pub(crate) fn native(geom: Arc<dyn raydeon::Shape<WorldSpace, RMaterial>>) -> Self {
         let geom = InnerGeometry::Native(geom);
         Self { geom }
     }
@@ -35,7 +37,7 @@ impl Geometry {
         Self { geom }
     }
 
-    pub(crate) fn geometry(&self, obj: PyObject) -> Arc<dyn raydeon::Shape<WorldSpace, Material>> {
+    pub(crate) fn geometry(&self, obj: PyObject) -> Arc<dyn raydeon::Shape<WorldSpace, RMaterial>> {
         match &self.geom {
             InnerGeometry::Native(ref geom) => Arc::clone(geom),
             InnerGeometry::Py => Arc::new(PythonGeometry::new(obj, PythonGeometryKind::Draw)),
@@ -174,7 +176,7 @@ impl PythonGeometry {
     }
 }
 
-impl raydeon::Shape<WorldSpace, Material> for PythonGeometry {
+impl raydeon::Shape<WorldSpace, raydeon::material::Material> for PythonGeometry {
     fn collision_geometry(&self) -> Option<Vec<Arc<dyn raydeon::CollisionGeometry<WorldSpace>>>> {
         let collision_geometry: Option<_> = Python::with_gil(|py| {
             let inner = self.slf.bind(py);
@@ -201,7 +203,7 @@ impl raydeon::Shape<WorldSpace, Material> for PythonGeometry {
     fn paths(
         &self,
         cam: &raydeon::Camera<raydeon::Perspective, raydeon::Observation>,
-    ) -> Vec<raydeon::path::LineSegment3D<WorldSpace, Material>> {
+    ) -> Vec<raydeon::path::LineSegment3D<WorldSpace, raydeon::material::Material>> {
         let segments: Option<_> = Python::with_gil(|py| {
             let inner = self.slf.bind(py);
             let cam = Camera::from(*cam);
@@ -219,6 +221,18 @@ impl raydeon::Shape<WorldSpace, Material> for PythonGeometry {
             )
         });
         segments.unwrap_or_default()
+    }
+
+    fn metadata(&self) -> raydeon::material::Material {
+        let material: Option<Material> = Python::with_gil(|py| {
+            let inner = self.slf.bind(py);
+            let attr_value = inner.getattr("material").ok()?;
+
+            let material: Material = attr_value.extract().ok()?;
+
+            Some(material)
+        });
+        material.unwrap_or_default().0
     }
 }
 
@@ -257,6 +271,7 @@ pub(crate) fn register(m: &Bound<'_, PyModule>) -> PyResult<()> {
     m.add_class::<Tri>()?;
     m.add_class::<Plane>()?;
     m.add_class::<Quad>()?;
+    m.add_class::<Sphere>()?;
     m.add_class::<Geometry>()?;
     m.add_class::<CollisionGeometry>()?;
     Ok(())

@@ -36,9 +36,14 @@ pywrap!(HitData, raydeon::HitData);
 #[pymethods]
 impl HitData {
     #[new]
-    fn new(hit_point: PyReadonlyArray1<f64>, dist_to: f64) -> PyResult<Self> {
+    fn new(
+        hit_point: PyReadonlyArray1<f64>,
+        dist_to: f64,
+        normal: PyReadonlyArray1<f64>,
+    ) -> PyResult<Self> {
         let hit_point = Point3::try_from(hit_point)?;
-        Ok(raydeon::HitData::new(hit_point.0.cast_unit(), dist_to).into())
+        let normal = Vec3::try_from(normal)?;
+        Ok(raydeon::HitData::new(hit_point.0.cast_unit(), dist_to, normal.0.cast_unit()).into())
     }
 
     #[getter]

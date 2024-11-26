@@ -15,12 +15,12 @@ fn main() {
     let up = look.cross(WVec3::new(0.0, 1.0, 0.0)).cross(look);
 
     let fovy = 50.0;
-    let width = 1024.0;
-    let height = 1024.0;
+    let width = 1024;
+    let height = 1024;
     let znear = 0.1;
     let zfar = 100.0;
 
-    let scene = Scene::new(generate_scene());
+    let scene = Scene::new().with_geometry(generate_scene());
 
     let camera = Camera::new()
         .look_at(eye, focus, up)

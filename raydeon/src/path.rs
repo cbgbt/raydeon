@@ -175,15 +175,45 @@ where
     }
 
     pub fn join_slices(&self) -> Vec<LineSegment3D<Space, Metadata>> {
+        self.join_slices_with_forgiveness(0)
+    }
+
+    /// Joins slices, ignoring gaps of size `forgiveness` or smaller
+    pub fn join_slices_with_forgiveness(
+        &self,
+        forgiveness: usize,
+    ) -> Vec<LineSegment3D<Space, Metadata>> {
         if self.included.is_empty() {
             return Vec::new();
         }
+        let mut included = self.included.clone();
+
+        let mut gap_start = None;
+        let mut last_filled = None;
+        for curr in 0..self.num_chops {
+            let empty = !included.contains(&curr);
+            match gap_start {
+                Some(start) if empty && curr - start > forgiveness => gap_start = None,
+                Some(start) if !empty => (start..curr).for_each(|ndx| {
+                    included.insert(ndx);
+                    gap_start = None
+                }),
+                None if empty && curr > 0 && last_filled == Some(curr - 1) => {
+                    gap_start = Some(curr);
+                }
+                _ => (),
+            }
+            if !empty {
+                last_filled = Some(curr);
+            }
+        }
+
         let mut ndx_groups = HashSet::new();
 
-        let mut first = *self.included.first().unwrap();
+        let mut first = *included.first().unwrap();
         let mut last = first;
 
-        self.included.iter().for_each(|ndx| {
+        included.iter().for_each(|ndx| {
             if *ndx == first {
                 return;
             }

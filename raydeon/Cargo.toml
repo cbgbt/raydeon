@@ -9,6 +9,7 @@ cgmath.workspace = true
 collision.workspace = true
 euclid.workspace = true
 log.workspace = true
+rand = { workspace = true, features = ["std_rng"] }
 rayon.workspace = true
 tracing = { workspace = true, features = ["log"] }
 

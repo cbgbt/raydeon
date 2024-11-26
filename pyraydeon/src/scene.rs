@@ -4,9 +4,10 @@ use numpy::{Ix1, PyArray, PyReadonlyArray1};
 use pyo3::prelude::*;
 use raydeon::WorldSpace;
 
+use crate::light::PointLight;
 use crate::linear::{ArbitrarySpace, Point2, Point3, Vec3};
+use crate::material::Material;
 use crate::shapes::Geometry;
-use crate::Material;
 
 pywrap!(Camera, raydeon::Camera<raydeon::Perspective, raydeon::Observation>);
 
@@ -32,8 +33,53 @@ impl Camera {
             .into())
     }
 
-    fn perspective(&self, fovy: f64, width: f64, height: f64, znear: f64, zfar: f64) -> Camera {
+    fn perspective(&self, fovy: f64, width: usize, height: usize, znear: f64, zfar: f64) -> Camera {
         self.0.perspective(fovy, width, height, znear, zfar).into()
+    }
+
+    #[getter]
+    fn eye<'py>(&self, py: Python<'py>) -> Bound<'py, PyArray<f64, Ix1>> {
+        PyArray::from_slice_bound(py, &self.0.observation.eye.to_array())
+    }
+
+    #[getter]
+    fn focus<'py>(&self, py: Python<'py>) -> Bound<'py, PyArray<f64, Ix1>> {
+        PyArray::from_slice_bound(py, &self.0.observation.center.to_array())
+    }
+
+    #[getter]
+    fn up<'py>(&self, py: Python<'py>) -> Bound<'py, PyArray<f64, Ix1>> {
+        PyArray::from_slice_bound(py, &self.0.observation.up.to_array())
+    }
+
+    #[getter]
+    fn fovy(&self) -> f64 {
+        self.0.perspective.fovy
+    }
+
+    #[getter]
+    fn width(&self) -> usize {
+        self.0.perspective.width
+    }
+
+    #[getter]
+    fn height(&self) -> usize {
+        self.0.perspective.height
+    }
+
+    #[getter]
+    fn aspect(&self) -> f64 {
+        self.0.perspective.aspect
+    }
+
+    #[getter]
+    fn znear(&self) -> f64 {
+        self.0.perspective.znear
+    }
+
+    #[getter]
+    fn zfar(&self) -> f64 {
+        self.0.perspective.zfar
     }
 
     fn __repr__(slf: &Bound<'_, Self>) -> PyResult<String> {
@@ -44,23 +90,44 @@ impl Camera {
 
 #[pyclass(frozen)]
 pub(crate) struct Scene {
-    scene: Arc<raydeon::Scene<Material>>,
+    scene: Arc<
+        raydeon::Scene<
+            raydeon::scene::SceneGeometry<raydeon::material::Material>,
+            raydeon::scene::SceneLighting,
+        >,
+    >,
 }
 
 #[pymethods]
 impl Scene {
     #[new]
-    fn new(py: Python, geometry: Vec<PyObject>) -> PyResult<Self> {
-        let geometry: Vec<Arc<dyn raydeon::Shape<WorldSpace, Material>>> = geometry
+    #[pyo3(signature = (geometry=None, lights=None))]
+    fn new(
+        py: Python,
+        geometry: Option<Vec<PyObject>>,
+        lights: Option<Vec<PointLight>>,
+    ) -> PyResult<Self> {
+        let geometry = geometry.unwrap_or_default();
+        let lights = lights.unwrap_or_default();
+        let geometry: Vec<Arc<dyn raydeon::Shape<WorldSpace, raydeon::material::Material>>> =
+            geometry
+                .into_iter()
+                .map(|g| {
+                    let geom: Py<Geometry> = g.extract(py)?;
+                    let raydeon_shape = geom.borrow(py);
+                    let raydeon_shape = raydeon_shape.geometry(g);
+                    Ok(raydeon_shape)
+                })
+                .collect::<PyResult<_>>()?;
+        let lights: Vec<Arc<dyn raydeon::Light>> = lights
             .into_iter()
-            .map(|g| {
-                let geom: Py<Geometry> = g.extract(py)?;
-                let raydeon_shape = geom.borrow(py);
-                let raydeon_shape = raydeon_shape.geometry(g);
-                Ok(raydeon_shape)
-            })
-            .collect::<PyResult<_>>()?;
-        let scene = Arc::new(raydeon::Scene::new(geometry));
+            .map(|l| Arc::new(l.0) as Arc<dyn raydeon::lights::Light>)
+            .collect();
+        let scene = Arc::new(
+            raydeon::Scene::new()
+                .with_geometry(geometry)
+                .with_lighting(lights),
+        );
         Ok(Self { scene })
     }
 
@@ -69,6 +136,30 @@ impl Scene {
             let cam = self.scene.attach_camera(camera.0);
             cam.render()
                 .into_iter()
+                .map(|ls| ls.cast_unit().into())
+                .collect()
+        })
+    }
+
+    #[pyo3(signature = (camera, seed=None))]
+    fn render_with_lighting(
+        &self,
+        py: Python,
+        camera: &Camera,
+        seed: Option<u64>,
+    ) -> Vec<LineSegment2D> {
+        py.allow_threads(|| {
+            let cam = self.scene.attach_camera(camera.0);
+            let cam = if let Some(seed) = seed {
+                cam.with_seed(seed)
+            } else {
+                cam
+            };
+            let render_result = cam.render_with_lighting();
+            render_result
+                .geometry_paths
+                .into_iter()
+                .chain(render_result.hatch_paths)
                 .map(|ls| ls.cast_unit().into())
                 .collect()
         })
@@ -107,15 +198,25 @@ impl LineSegment2D {
     }
 }
 
-pywrap!(LineSegment3D, raydeon::path::LineSegment3D<ArbitrarySpace, Material>);
+pywrap!(LineSegment3D, raydeon::path::LineSegment3D<ArbitrarySpace, raydeon::material::Material>);
 
 #[pymethods]
 impl LineSegment3D {
     #[new]
-    fn new(p1: &Bound<'_, PyAny>, p2: &Bound<'_, PyAny>) -> PyResult<Self> {
+    #[pyo3(signature = (p1, p2, material=None))]
+    fn new(
+        p1: &Bound<'_, PyAny>,
+        p2: &Bound<'_, PyAny>,
+        material: Option<Material>,
+    ) -> PyResult<Self> {
         let p1 = Point3::try_from(p1)?;
         let p2 = Point3::try_from(p2)?;
-        Ok(raydeon::path::LineSegment3D::tagged(p1.cast_unit(), p2.cast_unit(), Material).into())
+        Ok(raydeon::path::LineSegment3D::tagged(
+            p1.cast_unit(),
+            p2.cast_unit(),
+            material.unwrap_or_default().0,
+        )
+        .into())
     }
 
     #[getter]

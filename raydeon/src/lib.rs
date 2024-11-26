@@ -1,6 +1,9 @@
+#[allow(clippy::needless_doctest_main)]
 #[doc = include_str!("../../README.md")]
 pub(crate) mod bvh;
 pub mod camera;
+pub mod lights;
+pub mod material;
 pub mod path;
 pub mod ray;
 pub mod scene;
@@ -8,11 +11,15 @@ pub mod shapes;
 
 use std::sync::Arc;
 
+pub use camera::{Camera, NoObservation, NoPerspective, Observation, Perspective};
+pub use lights::Light;
 pub use path::{LineSegment3D, PathMeta};
 pub use ray::{HitData, Ray};
+pub use scene::{Scene, SceneGeometry, SceneLighting};
 
-pub use camera::{Camera, NoObservation, NoPerspective, Observation, Perspective};
-pub use scene::Scene;
+// The pixel fidelity of the drawing instrument.
+// TODO: Make this configurable
+pub const PEN_PX_SIZE: f64 = 4.0;
 
 #[cfg(test)]
 pub(crate) static EPSILON: f64 = 0.004;
@@ -50,6 +57,7 @@ where
     Meta: PathMeta,
 {
     fn collision_geometry(&self) -> Option<Vec<Arc<dyn CollisionGeometry<Space>>>>;
+    fn metadata(&self) -> Meta;
     fn paths(&self, cam: &Camera<Perspective, Observation>) -> Vec<LineSegment3D<Space, Meta>>;
 }
 

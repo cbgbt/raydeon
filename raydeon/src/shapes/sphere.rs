@@ -6,9 +6,9 @@ use crate::{CollisionGeometry, HitData, Ray, WPoint3, WVec3, WorldSpace};
 /// A sphere at an arbitrary location in 3d space.
 pub struct Sphere {
     /// The location of the center of the sphere.
-    center: WPoint3,
+    pub center: WPoint3,
     /// The radius of the sphere.
-    radius: f64,
+    pub radius: f64,
     /// Precomputed radius squared.
     radius2: f64,
 }
@@ -46,7 +46,8 @@ impl CollisionGeometry<WorldSpace> for Sphere {
         let t = if t_0 < 0.0 { t_1 } else { t_0 };
 
         let hit_point = ray.point + (ray.dir.normalize() * t);
-        Some(HitData::new(hit_point, t))
+        let hit_normal = (hit_point - self.center).normalize();
+        Some(HitData::new(hit_point, t, hit_normal))
     }
 
     fn bounding_box(&self) -> Option<crate::AABB3<crate::WorldSpace>> {
@@ -70,7 +71,11 @@ mod test {
                 WPoint3::new(0.0, 0.0, 0.0),
                 WVec3::new(1.0, 0.0, 0.0)
             )),
-            Some(HitData::new(WPoint3::new(0.5, 0.0, 0.0), 0.5,))
+            Some(HitData::new(
+                WPoint3::new(0.5, 0.0, 0.0),
+                0.5,
+                (-1.0, 0.0, 0.0)
+            ))
         );
 
         assert_eq!(
@@ -96,7 +101,11 @@ mod test {
                 WPoint3::new(0.0, 1.0, 0.0),
                 WVec3::new(1.0, 0.0, 0.0)
             )),
-            Some(HitData::new(WPoint3::new(0.5, 1.0, 0.0), 0.5,))
+            Some(HitData::new(
+                WPoint3::new(0.5, 1.0, 0.0),
+                0.5,
+                (-1.0, 0.0, 0.0)
+            ))
         );
 
         let sphere3 = Sphere::new(WPoint3::new(0.0, 0.0, 0.0), 1.0);
@@ -106,7 +115,11 @@ mod test {
                 WPoint3::new(0.0, 0.0, 0.0),
                 WVec3::new(1.0, 0.0, 0.0)
             )),
-            Some(HitData::new(WPoint3::new(1.0, 0.0, 0.0), 1.0,))
+            Some(HitData::new(
+                WPoint3::new(1.0, 0.0, 0.0),
+                1.0,
+                (1.0, 0.0, 0.0)
+            ))
         );
 
         assert_eq!(
@@ -114,7 +127,11 @@ mod test {
                 WPoint3::new(0.0, 0.0, 0.0),
                 WVec3::new(-1.0, 0.0, 0.0)
             )),
-            Some(HitData::new(WPoint3::new(-1.0, 0.0, 0.0), 1.0,))
+            Some(HitData::new(
+                WPoint3::new(-1.0, 0.0, 0.0),
+                1.0,
+                (-1.0, 0.0, 0.0)
+            ))
         );
     }
 }

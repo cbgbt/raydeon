@@ -34,11 +34,18 @@ pub struct HitData {
     pub hit_point: WPoint3,
     /// The distance that a ray travelled to hit this shape.
     pub dist_to: f64,
+    pub normal: WVec3,
 }
 
 impl HitData {
-    pub fn new(hit_point: WPoint3, dist_to: f64) -> HitData {
-        HitData { hit_point, dist_to }
+    pub fn new(hit_point: impl Into<WPoint3>, dist_to: f64, normal: impl Into<WVec3>) -> HitData {
+        let hit_point = hit_point.into();
+        let normal = normal.into();
+        HitData {
+            hit_point,
+            dist_to,
+            normal,
+        }
     }
 }
 
@@ -58,6 +65,8 @@ impl ApproxEq for &HitData {
 
     fn approx_eq<M: Into<Self::Margin>>(self, other: Self, margin: M) -> bool {
         let margin = margin.into();
-        self.hit_point.approx_eq(&other.hit_point) && self.dist_to.approx_eq(other.dist_to, margin)
+        self.hit_point.approx_eq(&other.hit_point)
+            && self.dist_to.approx_eq(other.dist_to, margin)
+            && self.normal.approx_eq(&other.normal)
     }
 }

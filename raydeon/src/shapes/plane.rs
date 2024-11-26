@@ -30,8 +30,9 @@ impl CollisionGeometry<WorldSpace> for Plane {
             return None;
         }
 
+        let hit_norm = if rdn > 0.0 { -self.normal } else { self.normal };
         let hit_point = ray.point + (ray.dir.normalize() * t);
-        Some(HitData::new(hit_point, t))
+        Some(HitData::new(hit_point, t, hit_norm))
     }
 
     fn bounding_box(&self) -> Option<crate::AABB3<crate::WorldSpace>> {
@@ -52,7 +53,11 @@ mod test {
                 WPoint3::new(0.0, 0.0, 0.0),
                 WVec3::new(1.0, 0.0, 0.0)
             )),
-            Some(HitData::new(WPoint3::new(1.0, 0.0, 0.0), 1.0,))
+            Some(HitData::new(
+                WPoint3::new(1.0, 0.0, 0.0),
+                1.0,
+                plane1.normal
+            ))
         );
 
         assert_eq!(
@@ -60,7 +65,11 @@ mod test {
                 WPoint3::new(0.0, 1.0, 0.0),
                 WVec3::new(1.0, -1.0, 0.0)
             )),
-            Some(HitData::new(WPoint3::new(1.0, 0.0, 0.0), f64::sqrt(2.0),))
+            Some(HitData::new(
+                WPoint3::new(1.0, 0.0, 0.0),
+                f64::sqrt(2.0),
+                plane1.normal
+            ))
         );
 
         assert_eq!(
