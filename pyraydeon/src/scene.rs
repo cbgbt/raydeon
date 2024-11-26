@@ -9,7 +9,23 @@ use crate::linear::{ArbitrarySpace, Point2, Point3, Vec3};
 use crate::material::Material;
 use crate::shapes::Geometry;
 
-pywrap!(Camera, raydeon::Camera<raydeon::Perspective, raydeon::Observation>);
+#[derive(Debug, Clone)]
+#[pyclass(frozen)]
+pub(crate) struct Camera(pub(crate) raydeon::Camera<raydeon::Perspective, raydeon::Observation>);
+
+impl ::std::ops::Deref for Camera {
+    type Target = raydeon::Camera<raydeon::Perspective, raydeon::Observation>;
+
+    fn deref(&self) -> &Self::Target {
+        &self.0
+    }
+}
+
+impl From<raydeon::Camera<raydeon::Perspective, raydeon::Observation>> for Camera {
+    fn from(value: raydeon::Camera<raydeon::Perspective, raydeon::Observation>) -> Self {
+        Self(value)
+    }
+}
 
 #[pymethods]
 impl Camera {
@@ -29,12 +45,16 @@ impl Camera {
         let up = Vec3::try_from(up)?;
         Ok(self
             .0
+            .clone()
             .look_at(eye.cast_unit(), center.cast_unit(), up.cast_unit())
             .into())
     }
 
     fn perspective(&self, fovy: f64, width: usize, height: usize, znear: f64, zfar: f64) -> Camera {
-        self.0.perspective(fovy, width, height, znear, zfar).into()
+        self.0
+            .clone()
+            .perspective(fovy, width, height, znear, zfar)
+            .into()
     }
 
     #[getter]
@@ -137,7 +157,7 @@ impl Scene {
 
     fn render(&self, py: Python, camera: &Camera) -> Vec<LineSegment2D> {
         py.allow_threads(|| {
-            let cam = self.scene.attach_camera(camera.0);
+            let cam = self.scene.attach_camera(camera.0.clone());
             cam.render()
                 .into_iter()
                 .map(|ls| ls.cast_unit().into())
@@ -153,7 +173,7 @@ impl Scene {
         seed: Option<u64>,
     ) -> Vec<LineSegment2D> {
         py.allow_threads(|| {
-            let cam = self.scene.attach_camera(camera.0);
+            let cam = self.scene.attach_camera(camera.0.clone());
             let cam = if let Some(seed) = seed {
                 cam.with_seed(seed)
             } else {

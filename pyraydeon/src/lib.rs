@@ -2,7 +2,7 @@ use pyo3::prelude::*;
 
 macro_rules! pywrap {
     ($name:ident, $wraps:ty) => {
-        #[derive(Debug, Clone, Copy)]
+        #[derive(Debug, Clone)]
         #[pyclass(frozen)]
         pub(crate) struct $name(pub(crate) $wraps);
 

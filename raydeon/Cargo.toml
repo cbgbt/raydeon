@@ -5,6 +5,7 @@ authors = ["cbgbt <cbgbt@cabbage.bot>"]
 edition = "2021"
 
 [dependencies]
+bon.workspace = true
 cgmath.workspace = true
 collision.workspace = true
 euclid.workspace = true

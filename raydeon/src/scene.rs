@@ -12,12 +12,6 @@ use tracing::info;
 
 use crate::*;
 
-const VERTICAL_HATCH_SCALING: f64 = 0.8;
-const DIAGONAL_HATCH_SCALING: f64 = 0.46;
-const HATCH_SPACING: f64 = PEN_PX_SIZE * 2.0;
-const HATCH_PIXEL_CHOP_SIZE: f64 = PEN_PX_SIZE / 3.0;
-const HATCHING_SLICE_FORGIVENESS: usize = 1;
-
 #[derive(Debug)]
 pub struct Scene<G, L> {
     geometry: G,
@@ -210,6 +204,7 @@ where
     }
 }
 
+#[derive(Debug)]
 pub struct SceneCamera<'s, P, L>
 where
     P: PathMeta,
@@ -324,14 +319,14 @@ impl<'a> SceneCamera<'a, Material, SceneLighting> {
         info!("Generating vertical hatch lines from lighting.");
         let vert_lines = self.filter_hatch_lines_by(&self.vertical_hatch_lines(), |brightness| {
             let threshold: f64 = rand::distributions::Standard.sample(&mut rng);
-            brightness > (threshold * VERTICAL_HATCH_SCALING)
+            brightness > (threshold * self.camera.render_options.vert_hatch_brightness_scaling)
         });
         info!("Generated {} vertical hatch lines.", vert_lines.len());
 
         info!("Generating diagonal hatch lines from lighting.");
         let diag_lines = self.filter_hatch_lines_by(&self.diagonal_hatch_lines(), |brightness| {
             let threshold: f64 = rand::distributions::Standard.sample(&mut rng);
-            brightness > (threshold * DIAGONAL_HATCH_SCALING)
+            brightness > (threshold * self.camera.render_options.diag_hatch_brightness_scaling)
         });
         info!("Generated {} diagonal hatch lines.", diag_lines.len());
 
@@ -357,7 +352,9 @@ impl<'a> SceneCamera<'a, Material, SceneLighting> {
         let mut split_segments = segments
             .iter()
             .map(|segment| {
-                let num_chops = (segment.length().ceil() / HATCH_PIXEL_CHOP_SIZE) as usize;
+                let num_chops = (segment.length().ceil()
+                    / self.camera.render_options.hatch_pixel_chop_factor)
+                    as usize;
                 SlicedSegment3D::new(num_chops, segment)
             })
             .collect::<Vec<_>>();
@@ -379,7 +376,9 @@ impl<'a> SceneCamera<'a, Material, SceneLighting> {
                 to_remove
                     .into_iter()
                     .for_each(|ndx| path_group.remove_subsegment(ndx));
-                path_group.join_slices_with_forgiveness(HATCHING_SLICE_FORGIVENESS)
+                path_group.join_slices_with_forgiveness(
+                    self.camera.render_options.hatch_slice_forgiveness,
+                )
             })
             .map(|path| LineSegment2D::new(path.p1().to_2d(), path.p2().to_2d()))
             .collect::<Vec<_>>();
@@ -408,7 +407,7 @@ impl<'a> SceneCamera<'a, Material, SceneLighting> {
 
     // https://smashingpencilsart.com/how-do-you-hatch-with-a-pen/
     fn vertical_hatch_lines(&self) -> Vec<LineSegment2D<CameraSpace>> {
-        let initial_offset = HATCH_SPACING / 2.0;
+        let initial_offset = self.camera.render_options.hatch_pixel_spacing / 2.0;
 
         let mut segments = Vec::new();
 
@@ -418,13 +417,13 @@ impl<'a> SceneCamera<'a, Material, SceneLighting> {
             let start = Point2::new(x, 0.0);
             let end = Point2::new(x, self.camera.perspective.height as f64);
             segments.push(LineSegment2D::new(start, end));
-            x += HATCH_SPACING;
+            x += self.camera.render_options.hatch_pixel_spacing;
         }
         segments
     }
 
     fn diagonal_hatch_lines(&self) -> Vec<LineSegment2D<CameraSpace>> {
-        let initial_offset = HATCH_SPACING / 2.0;
+        let initial_offset = self.camera.render_options.hatch_pixel_spacing / 2.0;
 
         let mut segments = Vec::new();
 
@@ -474,7 +473,7 @@ impl<'a> SceneCamera<'a, Material, SceneLighting> {
                 Point2D::new(p2.x, p2.y),
             ));
 
-            dist += HATCH_SPACING;
+            dist += self.camera.render_options.hatch_pixel_spacing;
             curr_point = diagonal * dist;
         }
 

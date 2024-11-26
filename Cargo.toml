@@ -10,6 +10,7 @@ raydeon = { path = "./raydeon", version = "0.2" }
 pyrayeon = { path = "./pyraydeon", version = "0.1.0-alpha" }
 
 anyhow = "1"
+bon = "3"
 cgmath = "0.17"
 collision = "0.20"
 env_logger = "0.11"

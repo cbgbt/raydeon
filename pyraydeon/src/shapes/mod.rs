@@ -206,7 +206,7 @@ impl raydeon::Shape<WorldSpace, raydeon::material::Material> for PythonGeometry 
     ) -> Vec<raydeon::path::LineSegment3D<WorldSpace, raydeon::material::Material>> {
         let segments: Option<_> = Python::with_gil(|py| {
             let inner = self.slf.bind(py);
-            let cam = Camera::from(*cam);
+            let cam = Camera::from(cam.clone());
             let call_result = inner.call_method1("paths", (cam,)).unwrap();
 
             let segments = call_result
@@ -238,7 +238,7 @@ impl raydeon::Shape<WorldSpace, raydeon::material::Material> for PythonGeometry 
 
 impl raydeon::CollisionGeometry<WorldSpace> for PythonGeometry {
     fn hit_by(&self, ray: &raydeon::Ray) -> Option<raydeon::HitData> {
-        if let PythonGeometryKind::Collision { aabb: Some(aabb) } = self.kind {
+        if let PythonGeometryKind::Collision { aabb: Some(aabb) } = &self.kind {
             raydeon::shapes::AxisAlignedCuboid::from(aabb.0.cast_unit()).hit_by(ray)?;
         }
         Python::with_gil(|py| {

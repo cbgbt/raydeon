@@ -17,10 +17,6 @@ pub use path::{LineSegment3D, PathMeta};
 pub use ray::{HitData, Ray};
 pub use scene::{Scene, SceneGeometry, SceneLighting};
 
-// The pixel fidelity of the drawing instrument.
-// TODO: Make this configurable
-pub const PEN_PX_SIZE: f64 = 4.0;
-
 #[cfg(test)]
 pub(crate) static EPSILON: f64 = 0.004;
 
