@@ -60,7 +60,7 @@ jobs:
         uses: PyO3/maturin-action@v1
         with:
           target: ${{ matrix.platform.target }}
-          args: --release --out dist --find-interpreter
+          args: --release --out dist -i python3.11
           sccache: "true"
           manylinux: auto
           working-directory: pyraydeon
@@ -93,7 +93,7 @@ jobs:
         uses: PyO3/maturin-action@v1
         with:
           target: ${{ matrix.platform.target }}
-          args: --release --out dist --find-interpreter
+          args: --release --out dist -i python3.11
           sccache: "true"
           manylinux: musllinux_1_2
           working-directory: pyraydeon
@@ -123,7 +123,7 @@ jobs:
         uses: PyO3/maturin-action@v1
         with:
           target: ${{ matrix.platform.target }}
-          args: --release --out dist --find-interpreter
+          args: --release --out dist -i python3.11
           sccache: "true"
           working-directory: pyraydeon
       - name: Upload wheels
@@ -151,7 +151,7 @@ jobs:
         uses: PyO3/maturin-action@v1
         with:
           target: ${{ matrix.platform.target }}
-          args: --release --out dist --find-interpreter
+          args: --release --out dist -i python3.11
           sccache: "true"
           working-directory: pyraydeon
       - name: Upload wheels
