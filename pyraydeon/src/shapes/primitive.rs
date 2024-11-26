@@ -4,24 +4,21 @@ use crate::material::Material;
 use numpy::{Ix1, PyArray, PyArrayLike1, PyArrayLike2};
 use pyo3::exceptions::PyIndexError;
 use pyo3::prelude::*;
-use raydeon::WorldSpace;
 use std::sync::Arc;
 
-type RMaterial = raydeon::material::Material;
-
 #[pyclass(frozen, extends=Geometry, subclass)]
-pub(crate) struct AxisAlignedCuboid(pub(crate) Arc<raydeon::shapes::AxisAlignedCuboid<RMaterial>>);
+pub(crate) struct AxisAlignedCuboid(pub(crate) Arc<raydeon::shapes::AxisAlignedCuboid>);
 
 impl ::std::ops::Deref for AxisAlignedCuboid {
-    type Target = Arc<raydeon::shapes::AxisAlignedCuboid<RMaterial>>;
+    type Target = Arc<raydeon::shapes::AxisAlignedCuboid>;
 
     fn deref(&self) -> &Self::Target {
         &self.0
     }
 }
 
-impl From<Arc<raydeon::shapes::AxisAlignedCuboid<RMaterial>>> for AxisAlignedCuboid {
-    fn from(value: Arc<raydeon::shapes::AxisAlignedCuboid<RMaterial>>) -> Self {
+impl From<Arc<raydeon::shapes::AxisAlignedCuboid>> for AxisAlignedCuboid {
+    fn from(value: Arc<raydeon::shapes::AxisAlignedCuboid>) -> Self {
         Self(value)
     }
 }
@@ -38,32 +35,32 @@ impl AxisAlignedCuboid {
         let min: Vec3 = min.try_into()?;
         let max: Vec3 = max.try_into()?;
 
-        let shape = Arc::new(raydeon::shapes::AxisAlignedCuboid::tagged(
-            min.cast_unit(),
-            max.cast_unit(),
-            material.unwrap_or_default().0,
-        ));
-        let geom =
-            Geometry::native(Arc::clone(&shape)
-                as Arc<dyn raydeon::Shape<WorldSpace, raydeon::material::Material>>);
+        let shape = Arc::new(
+            raydeon::shapes::AxisAlignedCuboid::new()
+                .min(min.cast_unit())
+                .max(max.cast_unit())
+                .material(material.map(|m| m.0).unwrap_or_default())
+                .build(),
+        );
+        let geom = Geometry::native(Arc::clone(&shape) as Arc<dyn raydeon::Shape>);
 
         Ok((Self(shape), geom))
     }
 }
 
 #[pyclass(frozen, extends=Geometry, subclass)]
-pub(crate) struct Tri(pub(crate) Arc<raydeon::shapes::Triangle<RMaterial>>);
+pub(crate) struct Tri(pub(crate) Arc<raydeon::shapes::Triangle>);
 
 impl ::std::ops::Deref for Tri {
-    type Target = Arc<raydeon::shapes::Triangle<RMaterial>>;
+    type Target = Arc<raydeon::shapes::Triangle>;
 
     fn deref(&self) -> &Self::Target {
         &self.0
     }
 }
 
-impl From<Arc<raydeon::shapes::Triangle<RMaterial>>> for Tri {
-    fn from(value: Arc<raydeon::shapes::Triangle<RMaterial>>) -> Self {
+impl From<Arc<raydeon::shapes::Triangle>> for Tri {
+    fn from(value: Arc<raydeon::shapes::Triangle>) -> Self {
         Self(value)
     }
 }
@@ -82,14 +79,15 @@ impl Tri {
         let p2: Point3 = p2.try_into()?;
         let p3: Point3 = p3.try_into()?;
 
-        let shape = Arc::new(raydeon::shapes::Triangle::tagged(
-            p1.cast_unit(),
-            p2.cast_unit(),
-            p3.cast_unit(),
-            material.unwrap_or_default().0,
-        ));
-        let geom =
-            Geometry::native(Arc::clone(&shape) as Arc<dyn raydeon::Shape<WorldSpace, RMaterial>>);
+        let shape = Arc::new(
+            raydeon::shapes::Triangle::new()
+                .v0(p1.cast_unit())
+                .v1(p2.cast_unit())
+                .v2(p3.cast_unit())
+                .material(material.map(|m| m.0).unwrap_or_default())
+                .build(),
+        );
+        let geom = Geometry::native(Arc::clone(&shape) as Arc<dyn raydeon::Shape>);
         Ok((Self(shape), geom))
     }
 }
@@ -121,13 +119,14 @@ impl Plane {
         let point: Point3 = point.try_into()?;
         let normal: Vec3 = normal.try_into()?;
 
-        let shape = Arc::new(raydeon::shapes::Plane::new(
-            point.0.cast_unit(),
-            normal.0.cast_unit(),
-        ));
-        let geom = CollisionGeometry::native(
-            Arc::clone(&shape) as Arc<dyn raydeon::CollisionGeometry<WorldSpace>>
+        let shape = Arc::new(
+            raydeon::shapes::Plane::new()
+                .point(point.0.cast_unit())
+                .normal(normal.0.cast_unit())
+                .build(),
         );
+        let geom =
+            CollisionGeometry::native(Arc::clone(&shape) as Arc<dyn raydeon::CollisionGeometry>);
         Ok((Self(shape), geom))
     }
 
@@ -162,13 +161,17 @@ impl From<Arc<raydeon::shapes::Sphere>> for Sphere {
 #[pymethods]
 impl Sphere {
     #[new]
-    fn new(point: &Bound<'_, PyAny>, radius: f64) -> PyResult<(Self, CollisionGeometry)> {
-        let point: Point3 = point.try_into()?;
+    fn new(center: &Bound<'_, PyAny>, radius: f64) -> PyResult<(Self, CollisionGeometry)> {
+        let center: Point3 = center.try_into()?;
 
-        let shape = Arc::new(raydeon::shapes::Sphere::new(point.0.cast_unit(), radius));
-        let geom = CollisionGeometry::native(
-            Arc::clone(&shape) as Arc<dyn raydeon::CollisionGeometry<WorldSpace>>
+        let shape = Arc::new(
+            raydeon::shapes::Sphere::new()
+                .center(center.0.cast_unit())
+                .radius(radius)
+                .build(),
         );
+        let geom =
+            CollisionGeometry::native(Arc::clone(&shape) as Arc<dyn raydeon::CollisionGeometry>);
         Ok((Self(shape), geom))
     }
 
@@ -184,18 +187,18 @@ impl Sphere {
 }
 
 #[pyclass(frozen, extends=Geometry, subclass)]
-pub(crate) struct Quad(pub(crate) Arc<raydeon::shapes::Quad<RMaterial>>);
+pub(crate) struct Quad(pub(crate) Arc<raydeon::shapes::Quad>);
 
 impl ::std::ops::Deref for Quad {
-    type Target = Arc<raydeon::shapes::Quad<RMaterial>>;
+    type Target = Arc<raydeon::shapes::Quad>;
 
     fn deref(&self) -> &Self::Target {
         &self.0
     }
 }
 
-impl From<Arc<raydeon::shapes::Quad<RMaterial>>> for Quad {
-    fn from(value: Arc<raydeon::shapes::Quad<RMaterial>>) -> Self {
+impl From<Arc<raydeon::shapes::Quad>> for Quad {
+    fn from(value: Arc<raydeon::shapes::Quad>) -> Self {
         Self(value)
     }
 }
@@ -241,14 +244,15 @@ impl Quad {
             })
             .map(|dims| [dims[0], dims[1]])?;
 
-        let shape = Arc::new(raydeon::shapes::Quad::tagged(
-            origin.0.cast_unit(),
-            basis,
-            dims,
-            material.unwrap_or_default().0,
-        ));
-        let geom =
-            Geometry::native(Arc::clone(&shape) as Arc<dyn raydeon::Shape<WorldSpace, RMaterial>>);
+        let shape = Arc::new(
+            raydeon::shapes::Quad::new()
+                .origin(origin.0.cast_unit())
+                .basis(basis)
+                .dims(dims)
+                .material(material.map(|m| m.0).unwrap_or_default())
+                .build(),
+        );
+        let geom = Geometry::native(Arc::clone(&shape) as Arc<dyn raydeon::Shape>);
         Ok((Self(shape), geom))
     }
 }

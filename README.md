@@ -35,21 +35,27 @@ fn main() {
 
     let scene = Scene::new()
         .geometry(vec![
-            Arc::new(AxisAlignedCuboid::tagged(
-                (-1.0, -1.0, -1.0),
-                (1.0, 1.0, 1.0),
-                Material::new(3.0, 2.0, 2.0, 0),
-            )),
-            Arc::new(AxisAlignedCuboid::tagged(
-                (1.8, -1.0, -1.0),
-                (3.8, 1.0, 1.0),
-                Material::new(2.0, 2.0, 2.0, 0),
-            )),
-            Arc::new(AxisAlignedCuboid::tagged(
-                (-1.4, 1.8, -1.0),
-                (0.6, 3.8, 1.0),
-                Material::new(3.0, 2.0, 2.0, 0),
-            )),
+            Arc::new(
+                AxisAlignedCuboid::new()
+                    .min((-1.0, -1.0, -1.0))
+                    .max((1.0, 1.0, 1.0))
+                    .material(Material::new(3.0, 2.0, 2.0, 0))
+                    .build(),
+            ),
+            Arc::new(
+                AxisAlignedCuboid::new()
+                    .min((1.8, -1.0, -1.0))
+                    .max((3.8, 1.0, 1.0))
+                    .material(Material::new(2.0, 2.0, 2.0, 0))
+                    .build(),
+            ),
+            Arc::new(
+                AxisAlignedCuboid::new()
+                    .min((-1.4, 1.8, -1.0))
+                    .max((0.6, 3.8, 1.0))
+                    .material(Material::new(3.0, 2.0, 2.0, 0))
+                    .build(),
+            ),
         ])
         .lighting(
             SceneLighting::new()

@@ -1,30 +1,23 @@
 //! Provides collision for spheres.
-use crate::{CollisionGeometry, HitData, Ray, WPoint3, WVec3, WorldSpace};
+use crate::{CollisionGeometry, HitData, Ray, WPoint3, WVec3};
+use bon::{builder, Builder};
 
-#[derive(Debug, Copy, Clone)]
+#[derive(Debug, Copy, Clone, Builder)]
+#[builder(start_fn(name = new))]
 #[cfg_attr(test, derive(PartialEq))]
 /// A sphere at an arbitrary location in 3d space.
 pub struct Sphere {
     /// The location of the center of the sphere.
+    #[builder(into)]
     pub center: WPoint3,
     /// The radius of the sphere.
     pub radius: f64,
     /// Precomputed radius squared.
+    #[builder(skip = radius * radius)]
     radius2: f64,
 }
 
-impl Sphere {
-    pub fn new(center: WPoint3, radius: f64) -> Sphere {
-        let radius2 = radius * radius;
-        Sphere {
-            center,
-            radius,
-            radius2,
-        }
-    }
-}
-
-impl CollisionGeometry<WorldSpace> for Sphere {
+impl CollisionGeometry for Sphere {
     fn hit_by(&self, ray: &Ray) -> Option<HitData> {
         let l_vec = self.center - ray.point;
         let t_ca = l_vec.dot(ray.dir);
@@ -64,7 +57,7 @@ mod test {
 
     #[test]
     fn test_hit_by() {
-        let sphere1 = Sphere::new(WPoint3::new(1.0, 0.0, 0.0), 0.5);
+        let sphere1 = Sphere::new().center((1.0, 0.0, 0.0)).radius(0.5).build();
 
         assert_eq!(
             sphere1.hit_by(&Ray::new(
@@ -94,7 +87,7 @@ mod test {
             None
         );
 
-        let sphere2 = Sphere::new(WPoint3::new(1.0, 1.0, 0.0), 0.5);
+        let sphere2 = Sphere::new().center((1.0, 1.0, 0.0)).radius(0.5).build();
 
         assert_eq!(
             sphere2.hit_by(&Ray::new(
@@ -108,7 +101,7 @@ mod test {
             ))
         );
 
-        let sphere3 = Sphere::new(WPoint3::new(0.0, 0.0, 0.0), 1.0);
+        let sphere3 = Sphere::new().center((0.0, 0.0, 0.0)).radius(1.0).build();
 
         assert_eq!(
             sphere3.hit_by(&Ray::new(

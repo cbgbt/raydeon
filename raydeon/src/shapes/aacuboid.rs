@@ -1,54 +1,44 @@
 //! Provides basic drawing and collision for axis-aligned cuboids.
+use bon::Builder;
 use core::f64;
 use euclid::Vector3D;
 use std::sync::Arc;
 
 use crate::path::LineSegment3D;
 use crate::{
-    Camera, CollisionGeometry, HitData, PathMeta, Ray, Shape, WPoint3, WVec3, WorldSpace, AABB3,
+    Camera, CollisionGeometry, HitData, Material, Ray, Shape, WPoint3, WVec3, WorldSpace, AABB3,
 };
 
-#[derive(Debug, Copy, Clone)]
+#[derive(Debug, Copy, Clone, Builder)]
+#[builder(start_fn(name = new))]
 #[cfg_attr(test, derive(PartialEq))]
-pub struct AxisAlignedCuboid<P>
-where
-    P: PathMeta,
-{
+pub struct AxisAlignedCuboid {
+    #[builder(into)]
     pub min: WVec3,
+    #[builder(into)]
     pub max: WVec3,
-    pub meta: P,
+    pub material: Option<Material>,
 }
 
-impl AxisAlignedCuboid<usize> {
-    pub fn new(min: impl Into<WVec3>, max: impl Into<WVec3>) -> AxisAlignedCuboid<usize> {
-        Self::tagged(min, max, 0)
-    }
-}
-
-impl<P: PathMeta> AxisAlignedCuboid<P> {
-    pub fn tagged(min: impl Into<WVec3>, max: impl Into<WVec3>, meta: P) -> AxisAlignedCuboid<P> {
-        let min = min.into();
-        let max = max.into();
-        AxisAlignedCuboid { min, max, meta }
-    }
-}
-
-impl From<AABB3<WorldSpace>> for AxisAlignedCuboid<usize> {
+impl From<AABB3<WorldSpace>> for AxisAlignedCuboid {
     fn from(value: AABB3<WorldSpace>) -> Self {
-        Self::new(value.min.to_vector(), value.max.to_vector())
+        Self::new()
+            .min(value.min.to_vector())
+            .max(value.max.to_vector())
+            .build()
     }
 }
 
-impl<P: PathMeta> Shape<WorldSpace, P> for AxisAlignedCuboid<P> {
-    fn metadata(&self) -> P {
-        self.meta.clone()
+impl Shape for AxisAlignedCuboid {
+    fn metadata(&self) -> Material {
+        self.material.unwrap_or_default()
     }
 
-    fn collision_geometry(&self) -> Option<Vec<Arc<dyn CollisionGeometry<WorldSpace>>>> {
-        Some(vec![Arc::new(self.clone())])
+    fn collision_geometry(&self) -> Option<Vec<Arc<dyn CollisionGeometry>>> {
+        Some(vec![Arc::new(*self)])
     }
 
-    fn paths(&self, _cam: &Camera) -> Vec<LineSegment3D<WorldSpace, P>> {
+    fn paths(&self, _cam: &Camera) -> Vec<LineSegment3D<WorldSpace>> {
         let expand = (self.max - self.min).normalize() * 0.003;
         let pathmin = self.min - expand;
         let pathmax = self.max + expand;
@@ -67,23 +57,23 @@ impl<P: PathMeta> Shape<WorldSpace, P> for AxisAlignedCuboid<P> {
         let p8 = WPoint3::new(x1, y2, z2);
 
         vec![
-            LineSegment3D::tagged(p1, p2, self.meta.clone()),
-            LineSegment3D::tagged(p2, p3, self.meta.clone()),
-            LineSegment3D::tagged(p3, p4, self.meta.clone()),
-            LineSegment3D::tagged(p4, p1, self.meta.clone()),
-            LineSegment3D::tagged(p5, p6, self.meta.clone()),
-            LineSegment3D::tagged(p6, p7, self.meta.clone()),
-            LineSegment3D::tagged(p7, p8, self.meta.clone()),
-            LineSegment3D::tagged(p8, p5, self.meta.clone()),
-            LineSegment3D::tagged(p1, p5, self.meta.clone()),
-            LineSegment3D::tagged(p2, p6, self.meta.clone()),
-            LineSegment3D::tagged(p3, p7, self.meta.clone()),
-            LineSegment3D::tagged(p4, p8, self.meta.clone()),
+            LineSegment3D::new(p1, p2, self.material),
+            LineSegment3D::new(p2, p3, self.material),
+            LineSegment3D::new(p3, p4, self.material),
+            LineSegment3D::new(p4, p1, self.material),
+            LineSegment3D::new(p5, p6, self.material),
+            LineSegment3D::new(p6, p7, self.material),
+            LineSegment3D::new(p7, p8, self.material),
+            LineSegment3D::new(p8, p5, self.material),
+            LineSegment3D::new(p1, p5, self.material),
+            LineSegment3D::new(p2, p6, self.material),
+            LineSegment3D::new(p3, p7, self.material),
+            LineSegment3D::new(p4, p8, self.material),
         ]
     }
 }
 
-impl<P: PathMeta> CollisionGeometry<WorldSpace> for AxisAlignedCuboid<P> {
+impl CollisionGeometry for AxisAlignedCuboid {
     fn hit_by(&self, ray: &Ray) -> Option<HitData> {
         let dir_inv = Vector3D::new(1.0, 1.0, 1.0).component_div(ray.dir);
         let t1: Vector3D<f64, WorldSpace> =
@@ -139,7 +129,10 @@ mod test {
 
     #[test]
     fn test_rectp_hit_by() {
-        let prism1 = AxisAlignedCuboid::new(WVec3::new(0.0, 0.0, 0.0), WVec3::new(1.0, 1.0, 1.0));
+        let prism1 = AxisAlignedCuboid::new()
+            .min((0.0, 0.0, 0.0))
+            .max((1.0, 1.0, 1.0))
+            .build();
 
         let ray1 = Ray::new(WPoint3::new(-1.0, 0.5, 0.5), WVec3::new(1.0, 0.0, 0.0));
 

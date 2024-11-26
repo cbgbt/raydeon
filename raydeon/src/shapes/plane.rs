@@ -1,23 +1,21 @@
 //! Provides collision for 3D planes.
-use crate::{CollisionGeometry, HitData, Ray, WPoint3, WVec3, WorldSpace};
+use crate::{CollisionGeometry, HitData, Ray, WPoint3, WVec3};
+use bon::Builder;
 
-#[derive(Debug, Copy, Clone)]
+#[derive(Debug, Copy, Clone, Builder)]
+#[builder(start_fn(name = new))]
 #[cfg_attr(test, derive(PartialEq))]
 /// An infinite plane in 3D space.
 pub struct Plane {
     /// An arbitrary point in space which exists on the plane.
+    #[builder(into)]
     pub point: WPoint3,
     /// A normal vector to the plane.
+    #[builder(into)]
     pub normal: WVec3,
 }
 
-impl Plane {
-    pub fn new(point: WPoint3, normal: WVec3) -> Plane {
-        Plane { point, normal }
-    }
-}
-
-impl CollisionGeometry<WorldSpace> for Plane {
+impl CollisionGeometry for Plane {
     fn hit_by(&self, ray: &Ray) -> Option<HitData> {
         let rdn = ray.dir.dot(self.normal);
         if rdn == 0.0 {
@@ -46,7 +44,10 @@ mod test {
 
     #[test]
     fn test_hit_by() {
-        let plane1 = Plane::new(WPoint3::new(1.0, 0.0, 0.0), WVec3::new(-1.0, 0.0, 0.0));
+        let plane1 = Plane::new()
+            .point((1.0, 0.0, 0.0))
+            .normal((-1.0, 0.0, 0.0))
+            .build();
 
         assert_eq!(
             plane1.hit_by(&Ray::new(

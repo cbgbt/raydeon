@@ -1,7 +1,7 @@
 use std::sync::Arc;
 
 use raydeon::shapes::AxisAlignedCuboid;
-use raydeon::{Camera, Scene, Shape, WPoint3, WVec3, WorldSpace};
+use raydeon::{Camera, Scene, Shape, WPoint3, WVec3};
 
 fn main() {
     env_logger::Builder::from_default_env()
@@ -73,8 +73,8 @@ const LENGTH: usize = 100;
 const CELL_WIDTH: f64 = 2.0;
 const CELL_LENGTH: f64 = 3.0;
 
-fn generate_scene() -> Vec<Arc<dyn Shape<WorldSpace, usize>>> {
-    let mut scene: Vec<Arc<dyn Shape<_, _>>> = Vec::new();
+fn generate_scene() -> Vec<Arc<dyn Shape>> {
+    let mut scene: Vec<Arc<dyn Shape>> = Vec::new();
 
     for i in 0..WIDTH {
         for j in 0..LENGTH {
@@ -85,10 +85,12 @@ fn generate_scene() -> Vec<Arc<dyn Shape<WorldSpace, usize>>> {
 
             let z1 = cell_z + 0.15;
             let z2 = cell_z + CELL_LENGTH - 0.15;
-            scene.push(Arc::new(AxisAlignedCuboid::new(
-                WVec3::new(x1, 0.0, z1),
-                WVec3::new(x2, 2.5, z2),
-            )));
+            scene.push(Arc::new(
+                AxisAlignedCuboid::new()
+                    .min((x1, 0.0, z1))
+                    .max((x2, 2.5, z2))
+                    .build(),
+            ));
         }
     }
 

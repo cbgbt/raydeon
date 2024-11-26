@@ -3,12 +3,8 @@ use material::Material;
 use crate::*;
 
 pub trait Light: std::fmt::Debug + Send + Sync + 'static {
-    fn compute_illumination(
-        &self,
-        scene: &Scene<Material>,
-        hitpoint: HitData,
-        shape: &Arc<dyn Shape<WorldSpace, Material>>,
-    ) -> f64;
+    fn compute_illumination(&self, scene: &Scene, hitpoint: HitData, shape: &Arc<dyn Shape>)
+        -> f64;
 }
 
 #[derive(Debug, Copy, Clone, Default)]
@@ -25,9 +21,9 @@ pub struct PointLight {
 impl Light for PointLight {
     fn compute_illumination(
         &self,
-        scene: &Scene<Material>,
+        scene: &Scene,
         hitpoint: HitData,
-        shape: &Arc<dyn Shape<WorldSpace, Material>>,
+        shape: &Arc<dyn Shape>,
     ) -> f64 {
         let _light_hitpoint = match self.light_hitpoint_for_hit(scene, hitpoint, shape) {
             Some(hit) => hit,
@@ -125,9 +121,9 @@ impl PointLight {
 
     fn light_hitpoint_for_hit(
         &self,
-        scene: &Scene<Material>,
+        scene: &Scene,
         hitpoint: HitData,
-        shape: &Arc<dyn Shape<WorldSpace, Material>>,
+        shape: &Arc<dyn Shape>,
     ) -> Option<HitData> {
         let to_light = (self.position - hitpoint.hit_point).normalize();
         if to_light.dot(hitpoint.normal) < 0.0 {

@@ -8,10 +8,12 @@ fn main() {
         .init();
 
     let scene = Scene::new()
-        .geometry(vec![Arc::new(AxisAlignedCuboid::new(
-            WVec3::new(-1.0, -1.0, -1.0),
-            WVec3::new(1.0, 1.0, 1.0),
-        ))])
+        .geometry(vec![Arc::new(
+            AxisAlignedCuboid::new()
+                .min((-1.0, -1.0, -1.0))
+                .max((1.0, 1.0, 1.0))
+                .build(),
+        )])
         .construct();
 
     let eye = WPoint3::new(4.0, 3.0, 2.0);

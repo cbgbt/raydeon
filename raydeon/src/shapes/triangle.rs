@@ -1,50 +1,48 @@
 //! Provides basic drawing and collision for triangles.
+use bon::Builder;
 use std::sync::Arc;
 
 use super::plane::Plane;
 use crate::path::LineSegment3D;
-use crate::{Camera, CollisionGeometry, HitData, PathMeta, Ray, Shape, WPoint3, WVec3, WorldSpace};
+use crate::{Camera, CollisionGeometry, HitData, Material, Ray, Shape, WPoint3, WVec3, WorldSpace};
 
-#[derive(Debug, Copy, Clone)]
+#[derive(Debug, Copy, Clone, Builder)]
+#[builder(start_fn(name = new))]
 #[cfg_attr(test, derive(PartialEq))]
-pub struct Triangle<P: PathMeta> {
+pub struct Triangle {
+    #[builder(into)]
+    pub v0: WPoint3,
+    #[builder(into)]
+    pub v1: WPoint3,
+    #[builder(into)]
+    pub v2: WPoint3,
+
+    #[builder(skip = [v0, v1, v2])]
     pub verts: [WPoint3; 3],
+
+    #[builder(skip = [v1 - v0, v2 - v1, v0 - v2])]
     pub edges: [WVec3; 3],
+
+    #[builder(skip = Plane::new()
+        .point(v0)
+        .normal((v1 - v0).cross(v2 - v0).normalize())
+        .build()
+    )]
     pub plane: Plane,
-    pub meta: P,
+
+    pub material: Option<Material>,
 }
 
-impl Triangle<usize> {
-    pub fn new(v0: WPoint3, v1: WPoint3, v2: WPoint3) -> Self {
-        Self::tagged(v0, v1, v2, 0)
-    }
-}
-
-impl<P: PathMeta> Triangle<P> {
-    pub fn tagged(v0: WPoint3, v1: WPoint3, v2: WPoint3, meta: P) -> Triangle<P> {
-        let verts = [v0, v1, v2];
-        let edges = [v1 - v0, v2 - v1, v0 - v2];
-        let normal = (v1 - v0).cross(v2 - v0).normalize();
-        let plane = Plane::new(v0, normal);
-        Triangle {
-            verts,
-            edges,
-            plane,
-            meta,
-        }
-    }
-}
-
-impl<P: PathMeta> Shape<WorldSpace, P> for Triangle<P> {
-    fn metadata(&self) -> P {
-        self.meta.clone()
+impl Shape for Triangle {
+    fn metadata(&self) -> Material {
+        self.material.unwrap_or_default()
     }
 
-    fn collision_geometry(&self) -> Option<Vec<std::sync::Arc<dyn CollisionGeometry<WorldSpace>>>> {
-        Some(vec![Arc::new(self.clone())])
+    fn collision_geometry(&self) -> Option<Vec<std::sync::Arc<dyn CollisionGeometry>>> {
+        Some(vec![Arc::new(*self)])
     }
 
-    fn paths(&self, _cam: &Camera) -> Vec<LineSegment3D<WorldSpace, P>> {
+    fn paths(&self, _cam: &Camera) -> Vec<LineSegment3D<WorldSpace>> {
         let v0 = self.verts[0];
         let v1 = self.verts[1];
         let v2 = self.verts[2];
@@ -55,14 +53,14 @@ impl<P: PathMeta> Shape<WorldSpace, P> for Triangle<P> {
         let v2 = v2 + (v2 - centroid).normalize() * 0.015;
 
         vec![
-            LineSegment3D::tagged(v0, v1, self.meta.clone()),
-            LineSegment3D::tagged(v1, v2, self.meta.clone()),
-            LineSegment3D::tagged(v2, v0, self.meta.clone()),
+            LineSegment3D::new(v0, v1, self.material),
+            LineSegment3D::new(v1, v2, self.material),
+            LineSegment3D::new(v2, v0, self.material),
         ]
     }
 }
 
-impl<P: PathMeta> CollisionGeometry<WorldSpace> for Triangle<P> {
+impl CollisionGeometry for Triangle {
     fn hit_by(&self, ray: &Ray) -> Option<HitData> {
         let p_hit = self.plane.hit_by(ray);
 
@@ -115,11 +113,11 @@ mod test {
 
     #[test]
     fn test_tri_hit_by() {
-        let tri1 = Triangle::new(
-            WPoint3::new(0.0, 0.0, 0.0),
-            WPoint3::new(2.0, 0.0, 0.0),
-            WPoint3::new(0.0, 2.0, 0.0),
-        );
+        let tri1 = Triangle::new()
+            .v0((0.0, 0.0, 0.0))
+            .v1((2.0, 0.0, 0.0))
+            .v2((0.0, 2.0, 0.0))
+            .build();
 
         // hits tri1
         let ray1 = Ray::new(

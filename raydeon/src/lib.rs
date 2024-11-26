@@ -14,11 +14,10 @@ use std::sync::Arc;
 pub use camera::{Camera, CameraOptions};
 pub use lights::Light;
 pub use material::Material;
-pub use path::{LineSegment3D, PathMeta};
+pub use path::LineSegment3D;
 pub use ray::{HitData, Ray};
 pub use scene::{Scene, SceneGeometry, SceneLighting};
 
-#[cfg(test)]
 pub(crate) static EPSILON: f64 = 0.004;
 
 #[derive(Debug, Copy, Clone)]
@@ -48,20 +47,13 @@ pub type WCTransform = Transform3<WorldSpace, CameraSpace>;
 pub type WWTransform = Transform3<WorldSpace, WorldSpace>;
 pub type CCTransform = Transform3<CameraSpace, CameraSpace>;
 
-pub trait Shape<Space, Meta>: Send + Sync + std::fmt::Debug
-where
-    Space: Sized + Send + Sync + std::fmt::Debug + Copy + Clone,
-    Meta: PathMeta,
-{
-    fn collision_geometry(&self) -> Option<Vec<Arc<dyn CollisionGeometry<Space>>>>;
-    fn metadata(&self) -> Meta;
-    fn paths(&self, cam: &Camera) -> Vec<LineSegment3D<Space, Meta>>;
+pub trait Shape: Send + Sync + std::fmt::Debug {
+    fn collision_geometry(&self) -> Option<Vec<Arc<dyn CollisionGeometry>>>;
+    fn metadata(&self) -> Material;
+    fn paths(&self, cam: &Camera) -> Vec<LineSegment3D<WorldSpace>>;
 }
 
-pub trait CollisionGeometry<Space>: Send + Sync + std::fmt::Debug
-where
-    Space: Sized + Send + Sync + std::fmt::Debug + Copy + Clone,
-{
+pub trait CollisionGeometry: Send + Sync + std::fmt::Debug {
     fn hit_by(&self, ray: &Ray) -> Option<HitData>;
-    fn bounding_box(&self) -> Option<AABB3<Space>>;
+    fn bounding_box(&self) -> Option<AABB3<WorldSpace>>;
 }

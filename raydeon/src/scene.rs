@@ -2,7 +2,6 @@ use bon::Builder;
 use bvh::{BVHTree, Collidable};
 use collision::Continuous;
 use euclid::{Point2D, Vector2D};
-use material::Material;
 use path::{LineSegment2D, SlicedSegment3D};
 use rand::distributions::Distribution;
 use rand::SeedableRng;
@@ -14,44 +13,44 @@ use crate::*;
 
 #[derive(Debug, Builder)]
 #[builder(start_fn(name = new), finish_fn(name = construct))]
-pub struct Scene<P: PathMeta> {
+pub struct Scene {
     #[builder(into)]
-    geometry: SceneGeometry<P>,
+    geometry: SceneGeometry,
     #[builder(into, default)]
     lighting: SceneLighting,
 }
 
 #[derive(Debug)]
-pub struct SceneGeometry<P: PathMeta> {
-    geometry: Vec<Arc<dyn Shape<WorldSpace, P>>>,
-    bvh: BVHTree<WorldSpace, P>,
+pub struct SceneGeometry {
+    geometry: Vec<Arc<dyn Shape>>,
+    bvh: BVHTree,
 }
 
-impl<P: PathMeta> SceneGeometry<P> {
-    pub fn new() -> SceneGeometry<P> {
+impl SceneGeometry {
+    pub fn new() -> SceneGeometry {
         Default::default()
     }
 
-    pub fn with_geometry(mut self, geometry: Vec<Arc<dyn Shape<WorldSpace, P>>>) -> Self {
+    pub fn with_geometry(mut self, geometry: Vec<Arc<dyn Shape>>) -> Self {
         let bvh = Self::create_bvh(&geometry);
         self.geometry = geometry;
         self.bvh = bvh;
         self
     }
 
-    pub fn push_geometry(mut self, geometry: Arc<dyn Shape<WorldSpace, P>>) -> Self {
+    pub fn push_geometry(mut self, geometry: Arc<dyn Shape>) -> Self {
         self.geometry.push(geometry);
         self.bvh = Self::create_bvh(&self.geometry);
         self
     }
 
-    pub fn concat_geometry(mut self, geometry: &[Arc<dyn Shape<WorldSpace, P>>]) -> Self {
+    pub fn concat_geometry(mut self, geometry: &[Arc<dyn Shape>]) -> Self {
         self.geometry.extend_from_slice(geometry);
         self.bvh = Self::create_bvh(&self.geometry);
         self
     }
 
-    fn create_bvh(geometry: &[Arc<dyn Shape<WorldSpace, P>>]) -> BVHTree<WorldSpace, P> {
+    fn create_bvh(geometry: &[Arc<dyn Shape>]) -> BVHTree {
         let collision_geometry: Vec<_> = geometry
             .iter()
             .filter_map(|s| {
@@ -69,7 +68,7 @@ impl<P: PathMeta> SceneGeometry<P> {
     }
 }
 
-impl<P: PathMeta> Default for SceneGeometry<P> {
+impl Default for SceneGeometry {
     fn default() -> Self {
         Self {
             geometry: Vec::new(),
@@ -78,19 +77,19 @@ impl<P: PathMeta> Default for SceneGeometry<P> {
     }
 }
 
-impl<P: PathMeta, S: Shape<WorldSpace, P> + 'static> From<Vec<Arc<S>>> for SceneGeometry<P> {
+impl<S: Shape + 'static> From<Vec<Arc<S>>> for SceneGeometry {
     fn from(geometry: Vec<Arc<S>>) -> Self {
         SceneGeometry::new().with_geometry(
             geometry
                 .into_iter()
-                .map(|s| s as Arc<dyn Shape<WorldSpace, P>>)
+                .map(|s| s as Arc<dyn Shape>)
                 .collect::<Vec<_>>(),
         )
     }
 }
 
-impl<P: PathMeta> From<Vec<Arc<dyn Shape<WorldSpace, P>>>> for SceneGeometry<P> {
-    fn from(geometry: Vec<Arc<dyn Shape<WorldSpace, P>>>) -> Self {
+impl From<Vec<Arc<dyn Shape>>> for SceneGeometry {
+    fn from(geometry: Vec<Arc<dyn Shape>>) -> Self {
         SceneGeometry::new().with_geometry(geometry)
     }
 }
@@ -143,13 +142,13 @@ impl From<Vec<Arc<dyn Light>>> for SceneLighting {
     }
 }
 
-impl<P: PathMeta> Scene<P> {
-    pub fn attach_camera(&self, camera: Camera) -> SceneCamera<P> {
+impl Scene {
+    pub fn attach_camera(&self, camera: Camera) -> SceneCamera {
         SceneCamera::new(camera, self)
     }
 
     /// Find's the closest intersection point to geometry in the scene, if any
-    pub(crate) fn intersects(&self, ray: Ray) -> Option<(HitData, Arc<dyn Shape<WorldSpace, P>>)> {
+    pub(crate) fn intersects(&self, ray: Ray) -> Option<(HitData, Arc<dyn Shape>)> {
         self.geometry.bvh.intersects(ray)
     }
 
@@ -169,14 +168,14 @@ impl<P: PathMeta> Scene<P> {
 }
 
 #[derive(Debug)]
-pub struct SceneCamera<'s, P: PathMeta> {
+pub struct SceneCamera<'s> {
     camera: Camera,
-    scene: &'s Scene<P>,
+    scene: &'s Scene,
     seed: Option<u64>,
 }
 
-impl<'a, P: PathMeta> SceneCamera<'a, P> {
-    pub fn new(camera: Camera, scene: &'a Scene<P>) -> Self {
+impl<'a> SceneCamera<'a> {
+    pub fn new(camera: Camera, scene: &'a Scene) -> Self {
         SceneCamera {
             camera,
             scene,
@@ -189,14 +188,14 @@ impl<'a, P: PathMeta> SceneCamera<'a, P> {
         self
     }
 
-    fn clip_filter<M: PathMeta>(&self, path: &LineSegment3D<WorldSpace, M>) -> bool {
+    fn clip_filter(&self, path: &LineSegment3D<WorldSpace>) -> bool {
         self.scene
             .visible(self.camera.observation.eye, path.midpoint())
     }
 
     pub fn render(&self) -> Vec<LineSegment2D<CameraSpace>> {
         info!("Querying geometry for subpaths");
-        let parent_paths: Vec<LineSegment3D<WorldSpace, P>> = self
+        let parent_paths: Vec<LineSegment3D<WorldSpace>> = self
             .scene
             .geometry
             .geometry
@@ -209,7 +208,7 @@ impl<'a, P: PathMeta> SceneCamera<'a, P> {
             parent_paths.len()
         );
 
-        let mut paths: Vec<SlicedSegment3D<WorldSpace, P>> = parent_paths
+        let mut paths: Vec<SlicedSegment3D<WorldSpace>> = parent_paths
             .iter()
             .filter_map(|path| self.camera.chop_segment(path))
             .collect();
@@ -262,7 +261,7 @@ pub struct LitScene {
     pub hatch_paths: Vec<LineSegment2D<CameraSpace>>,
 }
 
-impl<'a> SceneCamera<'a, Material> {
+impl<'a> SceneCamera<'a> {
     pub fn render_with_lighting(&self) -> LitScene {
         let geometry_paths = self.render();
         let mut rng = match self.seed {
@@ -299,7 +298,7 @@ impl<'a> SceneCamera<'a, Material> {
     ) -> Vec<LineSegment2D<CameraSpace>> {
         let segments = segments
             .iter()
-            .map(|segment| LineSegment3D::new(segment.p1.to_3d(), segment.p2.to_3d()))
+            .map(|segment| LineSegment3D::new_segment(segment.p1.to_3d(), segment.p2.to_3d()))
             .collect::<Vec<_>>();
         let mut split_segments = segments
             .iter()

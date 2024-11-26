@@ -10,16 +10,20 @@ fn main() {
 
     let scene = Scene::new()
         .geometry(vec![
-            Arc::new(Triangle::new(
-                WPoint3::new(0.0, 0.0, 0.0),
-                WPoint3::new(0.0, 0.0, 1.0),
-                WPoint3::new(1.0, 0.0, 1.0),
-            )),
-            Arc::new(Triangle::new(
-                WPoint3::new(0.25, 0.25, 0.0),
-                WPoint3::new(0.0, 0.25, 1.0),
-                WPoint3::new(-0.65, 0.25, 1.0),
-            )),
+            Arc::new(
+                Triangle::new()
+                    .v0((0.0, 0.0, 0.0))
+                    .v1((0.0, 0.0, 1.0))
+                    .v2((1.0, 0.0, 1.0))
+                    .build(),
+            ),
+            Arc::new(
+                Triangle::new()
+                    .v0((0.25, 0.25, 0.0))
+                    .v1((0.0, 0.25, 1.0))
+                    .v2((-0.65, 0.25, 1.0))
+                    .build(),
+            ),
         ])
         .construct();
 

@@ -2,7 +2,7 @@ use std::sync::Arc;
 
 use numpy::{Ix1, PyArray, PyReadonlyArray1};
 use pyo3::prelude::*;
-use raydeon::{SceneLighting, WorldSpace};
+use raydeon::SceneLighting;
 
 use crate::light::PointLight;
 use crate::linear::{ArbitrarySpace, Point2, Point3, Vec3};
@@ -108,7 +108,7 @@ impl Camera {
 
 #[pyclass(frozen)]
 pub(crate) struct Scene {
-    scene: Arc<raydeon::Scene<raydeon::Material>>,
+    scene: Arc<raydeon::Scene>,
 }
 
 #[pymethods]
@@ -123,16 +123,15 @@ impl Scene {
     ) -> PyResult<Self> {
         let geometry = geometry.unwrap_or_default();
         let lights = lights.unwrap_or_default();
-        let geometry: Vec<Arc<dyn raydeon::Shape<WorldSpace, raydeon::material::Material>>> =
-            geometry
-                .into_iter()
-                .map(|g| {
-                    let geom: Py<Geometry> = g.extract(py)?;
-                    let raydeon_shape = geom.borrow(py);
-                    let raydeon_shape = raydeon_shape.geometry(g);
-                    Ok(raydeon_shape)
-                })
-                .collect::<PyResult<_>>()?;
+        let geometry: Vec<Arc<dyn raydeon::Shape>> = geometry
+            .into_iter()
+            .map(|g| {
+                let geom: Py<Geometry> = g.extract(py)?;
+                let raydeon_shape = geom.borrow(py);
+                let raydeon_shape = raydeon_shape.geometry(g);
+                Ok(raydeon_shape)
+            })
+            .collect::<PyResult<_>>()?;
         let lights: Vec<Arc<dyn raydeon::Light>> = lights
             .into_iter()
             .map(|l| Arc::new(l.0) as Arc<dyn raydeon::lights::Light>)
@@ -216,7 +215,7 @@ impl LineSegment2D {
     }
 }
 
-pywrap!(LineSegment3D, raydeon::path::LineSegment3D<ArbitrarySpace, raydeon::material::Material>);
+pywrap!(LineSegment3D, raydeon::path::LineSegment3D<ArbitrarySpace>);
 
 #[pymethods]
 impl LineSegment3D {
@@ -229,12 +228,14 @@ impl LineSegment3D {
     ) -> PyResult<Self> {
         let p1 = Point3::try_from(p1)?;
         let p2 = Point3::try_from(p2)?;
-        Ok(raydeon::path::LineSegment3D::tagged(
-            p1.cast_unit(),
-            p2.cast_unit(),
-            material.unwrap_or_default().0,
+        Ok(
+            raydeon::path::LineSegment3D::new(
+                p1.cast_unit(),
+                p2.cast_unit(),
+                material.map(|i| i.0),
+            )
+            .into(),
         )
-        .into())
     }
 
     #[getter]

@@ -1,20 +1,17 @@
-use crate::{CollisionGeometry, HitData, PathMeta, Ray, Shape, WorldSpace, AABB3};
+use crate::{CollisionGeometry, HitData, Ray, Shape, WorldSpace, AABB3};
 use euclid::Point3D;
 use rayon::prelude::*;
 use std::sync::Arc;
 use tracing::info;
 
 #[derive(Debug, Clone)]
-pub(crate) struct Collidable<Space, P: PathMeta> {
-    shape: Arc<dyn Shape<Space, P>>,
-    collision: Arc<dyn CollisionGeometry<Space>>,
+pub(crate) struct Collidable {
+    shape: Arc<dyn Shape>,
+    collision: Arc<dyn CollisionGeometry>,
 }
 
-impl<Space, P: PathMeta> Collidable<Space, P> {
-    pub(crate) fn new(
-        shape: Arc<dyn Shape<Space, P>>,
-        collision: Arc<dyn CollisionGeometry<Space>>,
-    ) -> Self {
+impl Collidable {
+    pub(crate) fn new(shape: Arc<dyn Shape>, collision: Arc<dyn CollisionGeometry>) -> Self {
         Self { shape, collision }
     }
 }
@@ -27,22 +24,14 @@ pub(crate) enum Axis {
 }
 
 #[derive(Debug)]
-pub(crate) struct BVHTree<Space, P>
-where
-    Space: Copy + Send + Sync + Sized + std::fmt::Debug + 'static,
-    P: PathMeta,
-{
-    aabb: AABB3<Space>,
-    root: Option<Node<Space, P>>,
-    unbounded: Vec<Collidable<Space, P>>,
+pub(crate) struct BVHTree {
+    aabb: AABB3<WorldSpace>,
+    root: Option<Node>,
+    unbounded: Vec<Collidable>,
 }
 
-impl<Space, P> BVHTree<Space, P>
-where
-    Space: Copy + Send + Sync + Sized + std::fmt::Debug + 'static,
-    P: PathMeta,
-{
-    pub(crate) fn new(collidables: &[Collidable<Space, P>]) -> Self {
+impl BVHTree {
+    pub(crate) fn new(collidables: &[Collidable]) -> Self {
         info!(
             "Creating Bounded Volume Hierarchy for {} shapes",
             collidables.len()
@@ -74,8 +63,8 @@ where
     }
 }
 
-impl<P: PathMeta> BVHTree<WorldSpace, P> {
-    pub(crate) fn intersects(&self, ray: Ray) -> Option<(HitData, Arc<dyn Shape<WorldSpace, P>>)> {
+impl BVHTree {
+    pub(crate) fn intersects(&self, ray: Ray) -> Option<(HitData, Arc<dyn Shape>)> {
         vec![
             self.intersects_bounded_volume(ray),
             self.intersects_unbounded_volume(ray),
@@ -85,10 +74,7 @@ impl<P: PathMeta> BVHTree<WorldSpace, P> {
         .min_by(|(hit1, _), (hit2, _)| hit1.dist_to.partial_cmp(&hit2.dist_to).unwrap())
     }
 
-    fn intersects_bounded_volume(
-        &self,
-        ray: Ray,
-    ) -> Option<(HitData, Arc<dyn Shape<WorldSpace, P>>)> {
+    fn intersects_bounded_volume(&self, ray: Ray) -> Option<(HitData, Arc<dyn Shape>)> {
         let (tmin, tmax) = bounding_box_intersects(self.aabb, ray);
         if tmax < tmin || tmax <= 0.0 {
             None
@@ -99,10 +85,7 @@ impl<P: PathMeta> BVHTree<WorldSpace, P> {
         }
     }
 
-    fn intersects_unbounded_volume(
-        &self,
-        ray: Ray,
-    ) -> Option<(HitData, Arc<dyn Shape<WorldSpace, P>>)> {
+    fn intersects_unbounded_volume(&self, ray: Ray) -> Option<(HitData, Arc<dyn Shape>)> {
         self.unbounded
             .iter()
             .filter_map(|collidable| {
@@ -116,34 +99,21 @@ impl<P: PathMeta> BVHTree<WorldSpace, P> {
 }
 
 #[derive(Debug)]
-enum Node<Space, P>
-where
-    Space: Copy + Send + Sync + Sized + std::fmt::Debug + 'static,
-    P: PathMeta,
-{
-    Parent(ParentNode<Space, P>),
-    Leaf(LeafNode<Space, P>),
+enum Node {
+    Parent(ParentNode),
+    Leaf(LeafNode),
 }
 
 #[derive(Debug)]
-struct ParentNode<Space, P>
-where
-    Space: Copy + Send + Sync + Sized + std::fmt::Debug + 'static,
-    P: PathMeta,
-{
+struct ParentNode {
     axis: Axis,
     point: f64,
-    left: Box<Node<Space, P>>,
-    right: Box<Node<Space, P>>,
+    left: Box<Node>,
+    right: Box<Node>,
 }
 
-impl<P: PathMeta> ParentNode<WorldSpace, P> {
-    fn intersects(
-        &self,
-        ray: Ray,
-        tmin: f64,
-        tmax: f64,
-    ) -> Option<(HitData, Arc<dyn Shape<WorldSpace, P>>)> {
+impl ParentNode {
+    fn intersects(&self, ray: Ray, tmin: f64, tmax: f64) -> Option<(HitData, Arc<dyn Shape>)> {
         let rp: f64;
         let rd: f64;
         match self.axis {
@@ -194,30 +164,14 @@ impl<P: PathMeta> ParentNode<WorldSpace, P> {
 }
 
 #[derive(Debug)]
-struct LeafNode<Space, P>
-where
-    Space: Copy + Send + Sync + Sized + std::fmt::Debug + 'static,
-    P: PathMeta,
-{
-    shapes: Vec<Arc<BoundedShape<Space, P>>>,
+struct LeafNode {
+    shapes: Vec<Arc<BoundedShape>>,
 }
 
-type PartitionedSegments<Space, P> = (
-    Vec<Arc<BoundedShape<Space, P>>>,
-    Vec<Arc<BoundedShape<Space, P>>>,
-);
+type PartitionedSegments = (Vec<Arc<BoundedShape>>, Vec<Arc<BoundedShape>>);
 
-impl<Space, P> LeafNode<Space, P>
-where
-    Space: Copy + Send + Sync + Sized + std::fmt::Debug + 'static,
-    P: PathMeta,
-{
-    fn partition(
-        &self,
-        best: u64,
-        best_axis: Axis,
-        best_point: f64,
-    ) -> PartitionedSegments<Space, P> {
+impl LeafNode {
+    fn partition(&self, best: u64, best_axis: Axis, best_point: f64) -> PartitionedSegments {
         let mut left = Vec::with_capacity(best as usize);
         let mut right = Vec::with_capacity(best as usize);
         for shape in &self.shapes {
@@ -252,8 +206,8 @@ where
     }
 }
 
-impl<P: PathMeta> LeafNode<WorldSpace, P> {
-    fn intersects(&self, ray: Ray) -> Option<(HitData, Arc<dyn Shape<WorldSpace, P>>)> {
+impl LeafNode {
+    fn intersects(&self, ray: Ray) -> Option<(HitData, Arc<dyn Shape>)> {
         self.shapes
             .iter()
             .filter_map(|shape| {
@@ -267,12 +221,8 @@ impl<P: PathMeta> LeafNode<WorldSpace, P> {
     }
 }
 
-impl<Space, P> Node<Space, P>
-where
-    Space: Copy + Send + Sync + Sized + std::fmt::Debug + 'static,
-    P: PathMeta,
-{
-    fn new(shapes: Vec<Arc<BoundedShape<Space, P>>>) -> (Self, usize) {
+impl Node {
+    fn new(shapes: Vec<Arc<BoundedShape>>) -> (Self, usize) {
         let mut node = Self::Leaf(LeafNode { shapes });
         let depth = node.split();
         (node, depth + 1)
@@ -345,13 +295,8 @@ where
     }
 }
 
-impl<P: PathMeta> Node<WorldSpace, P> {
-    fn intersects(
-        &self,
-        ray: Ray,
-        tmin: f64,
-        tmax: f64,
-    ) -> Option<(HitData, Arc<dyn Shape<WorldSpace, P>>)> {
+impl Node {
+    fn intersects(&self, ray: Ray, tmin: f64, tmax: f64) -> Option<(HitData, Arc<dyn Shape>)> {
         match self {
             Self::Parent(parent_node) => parent_node.intersects(ray, tmin, tmax),
             Self::Leaf(leaf_node) => leaf_node.intersects(ray),
@@ -360,20 +305,12 @@ impl<P: PathMeta> Node<WorldSpace, P> {
 }
 
 #[derive(Debug)]
-struct BoundedShape<Space, P>
-where
-    Space: Copy + Send + Sync + Sized + std::fmt::Debug + 'static,
-    P: PathMeta,
-{
-    collidable: Collidable<Space, P>,
-    aabb: AABB3<Space>,
+struct BoundedShape {
+    collidable: Collidable,
+    aabb: AABB3<WorldSpace>,
 }
 
-fn bounding_box_for_shapes<Space, P>(shapes: &[Arc<BoundedShape<Space, P>>]) -> AABB3<Space>
-where
-    Space: Copy + Send + Sync + Sized + std::fmt::Debug + 'static,
-    P: PathMeta,
-{
+fn bounding_box_for_shapes(shapes: &[Arc<BoundedShape>]) -> AABB3<WorldSpace> {
     let aabb = AABB3::new(Point3D::splat(f64::MAX), Point3D::splat(f64::MIN));
     let bounding_boxes = shapes.iter().map(|shape| shape.aabb).collect::<Vec<_>>();
 
@@ -388,10 +325,7 @@ where
     )
 }
 
-fn partition_bounding_box<Space>(axis: Axis, aabb: AABB3<Space>, point: f64) -> (bool, bool)
-where
-    Space: Copy + Send + Sync + Sized + std::fmt::Debug + 'static,
-{
+fn partition_bounding_box(axis: Axis, aabb: AABB3<WorldSpace>, point: f64) -> (bool, bool) {
     match axis {
         Axis::X => (aabb.min.x <= point, aabb.max.x >= point),
         Axis::Y => (aabb.min.y <= point, aabb.max.y >= point),

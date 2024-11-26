@@ -1,44 +1,28 @@
+use crate::Material;
 use euclid::*;
 use std::collections::{BTreeSet, HashSet};
 
-/// Trait over metadata associated with each segment.
-///
-/// This can be used to associate material data or other arbtirary information to paths for
-/// post-processing.
-pub trait PathMeta: Clone + std::fmt::Debug + Send + Sync + 'static {}
-impl<P> PathMeta for P where P: Clone + std::fmt::Debug + Send + Sync + 'static {}
-
-#[derive(Debug, Copy, Clone, PartialEq, Eq, Hash)]
-pub struct NoMetadata;
-
 #[derive(Debug, Copy, Clone)]
-pub struct LineSegment3D<Space, Metadata>
+pub struct LineSegment3D<Space>
 where
     Space: Copy + Clone + std::fmt::Debug,
-    Metadata: PathMeta,
 {
     p1: Point3D<f64, Space>,
     p2: Point3D<f64, Space>,
     norm_dir: Vector3D<f64, Space>,
     length: f64,
-    meta: Metadata,
+    material: Option<Material>,
 }
 
-impl<Space> LineSegment3D<Space, NoMetadata>
+impl<Space> LineSegment3D<Space>
 where
     Space: Copy + Clone + std::fmt::Debug,
 {
-    pub fn new(p1: Point3D<f64, Space>, p2: Point3D<f64, Space>) -> Self {
-        Self::tagged(p1, p2, NoMetadata)
-    }
-}
-
-impl<Space, Metadata> LineSegment3D<Space, Metadata>
-where
-    Space: Copy + Clone + std::fmt::Debug,
-    Metadata: PathMeta,
-{
-    pub fn tagged(p1: Point3D<f64, Space>, p2: Point3D<f64, Space>, meta: Metadata) -> Self {
+    pub fn new(
+        p1: Point3D<f64, Space>,
+        p2: Point3D<f64, Space>,
+        material: Option<Material>,
+    ) -> Self {
         let dir = p2 - p1;
         let length = dir.length();
         let norm_dir = dir.normalize();
@@ -47,8 +31,26 @@ where
             p2,
             length,
             norm_dir,
-            meta,
+            material,
         }
+    }
+
+    pub fn new_segment(p1: Point3D<f64, Space>, p2: Point3D<f64, Space>) -> Self {
+        let dir = p2 - p1;
+        let length = dir.length();
+        let norm_dir = dir.normalize();
+        Self {
+            p1,
+            p2,
+            length,
+            norm_dir,
+            material: None,
+        }
+    }
+
+    pub fn with_material(mut self, material: Material) -> Self {
+        self.material = Some(material);
+        self
     }
 
     pub fn p1(&self) -> Point3D<f64, Space> {
@@ -64,8 +66,8 @@ where
         self.p1 + (self.p2 - self.p1) / 2.0
     }
 
-    pub fn meta(&self) -> &Metadata {
-        &self.meta
+    pub fn material(&self) -> Material {
+        self.material.unwrap_or_default()
     }
 
     #[must_use]
@@ -78,11 +80,16 @@ where
         self.length
     }
 
-    pub fn cast_unit<U>(self) -> LineSegment3D<U, Metadata>
+    pub fn cast_unit<U>(self) -> LineSegment3D<U>
     where
         U: Copy + Clone + std::fmt::Debug,
     {
-        LineSegment3D::tagged(self.p1.cast_unit(), self.p2.cast_unit(), self.meta)
+        let slf = LineSegment3D::new_segment(self.p1.cast_unit(), self.p2.cast_unit());
+        if let Some(material) = self.material {
+            slf.with_material(material)
+        } else {
+            slf
+        }
     }
 
     pub fn xy(self) -> LineSegment2D<Space> {
@@ -100,47 +107,45 @@ where
     pub fn transform<Dst>(
         &self,
         transformation: &Transform3D<f64, Space, Dst>,
-    ) -> Option<LineSegment3D<Dst, Metadata>>
+    ) -> Option<LineSegment3D<Dst>>
     where
         Dst: Copy + Clone + std::fmt::Debug,
     {
         let (p1, p2) = (self.p1, self.p2);
         let p1t = transformation.transform_point3d(p1);
         let p2t = transformation.transform_point3d(p2);
-        p1t.and_then(|p1| p2t.map(|p2| LineSegment3D::tagged(p1, p2, self.meta.clone())))
+        p1t.and_then(|p1| p2t.map(|p2| LineSegment3D::new(p1, p2, self.material)))
     }
 
     pub fn transform_without_metadata<Dst>(
         &self,
         transformation: &Transform3D<f64, Space, Dst>,
-    ) -> Option<LineSegment3D<Dst, NoMetadata>>
+    ) -> Option<LineSegment3D<Dst>>
     where
         Dst: Copy + Clone + std::fmt::Debug,
     {
         let (p1, p2) = (self.p1, self.p2);
         let p1t = transformation.transform_point3d(p1);
         let p2t = transformation.transform_point3d(p2);
-        p1t.and_then(|p1| p2t.map(|p2| LineSegment3D::tagged(p1, p2, NoMetadata)))
+        p1t.and_then(|p1| p2t.map(|p2| LineSegment3D::new_segment(p1, p2)))
     }
 }
 
 /// Created when a segment is chopped into several smaller pieces
-pub struct SlicedSegment3D<'parent, Space, Metadata>
+pub struct SlicedSegment3D<'parent, Space>
 where
     Space: Copy + Clone + std::fmt::Debug,
-    Metadata: PathMeta,
 {
     num_chops: usize,
     included: BTreeSet<usize>,
-    parent: &'parent LineSegment3D<Space, Metadata>,
+    parent: &'parent LineSegment3D<Space>,
 }
 
-impl<'parent, Space, Metadata> SlicedSegment3D<'parent, Space, Metadata>
+impl<'parent, Space> SlicedSegment3D<'parent, Space>
 where
     Space: Copy + Clone + std::fmt::Debug,
-    Metadata: PathMeta,
 {
-    pub fn new(num_chops: usize, parent: &'parent LineSegment3D<Space, Metadata>) -> Self {
+    pub fn new(num_chops: usize, parent: &'parent LineSegment3D<Space>) -> Self {
         let included = (0..num_chops).collect();
         Self {
             num_chops,
@@ -157,14 +162,14 @@ where
         self.included.len()
     }
 
-    fn get_subsegment(&self, ndx: usize) -> LineSegment3D<Space, NoMetadata> {
+    fn get_subsegment(&self, ndx: usize) -> LineSegment3D<Space> {
         let segment_vec = self.parent.dir() * self.subsegment_len();
         let start = self.parent.p1 + segment_vec * (ndx as f64);
         let end = start + segment_vec;
-        LineSegment3D::tagged(start, end, NoMetadata)
+        LineSegment3D::new_segment(start, end)
     }
 
-    pub fn subsegments(&self) -> impl Iterator<Item = LineSegment3D<Space, NoMetadata>> + '_ {
+    pub fn subsegments(&self) -> impl Iterator<Item = LineSegment3D<Space>> + '_ {
         self.included
             .iter()
             .map(move |ndx| self.get_subsegment(*ndx))
@@ -174,15 +179,12 @@ where
         self.included.remove(&ndx);
     }
 
-    pub fn join_slices(&self) -> Vec<LineSegment3D<Space, Metadata>> {
+    pub fn join_slices(&self) -> Vec<LineSegment3D<Space>> {
         self.join_slices_with_forgiveness(0)
     }
 
     /// Joins slices, ignoring gaps of size `forgiveness` or smaller
-    pub fn join_slices_with_forgiveness(
-        &self,
-        forgiveness: usize,
-    ) -> Vec<LineSegment3D<Space, Metadata>> {
+    pub fn join_slices_with_forgiveness(&self, forgiveness: usize) -> Vec<LineSegment3D<Space>> {
         if self.included.is_empty() {
             return Vec::new();
         }
@@ -232,7 +234,7 @@ where
             .map(|ndx_group| {
                 let start = self.get_subsegment(*ndx_group.start()).p1;
                 let end = self.get_subsegment(*ndx_group.end()).p2;
-                LineSegment3D::tagged(start, end, self.parent.meta.clone())
+                LineSegment3D::new(start, end, self.parent.material)
             })
             .collect()
     }
