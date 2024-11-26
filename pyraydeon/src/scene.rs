@@ -2,7 +2,7 @@ use std::sync::Arc;
 
 use numpy::{Ix1, PyArray, PyReadonlyArray1};
 use pyo3::prelude::*;
-use raydeon::WorldSpace;
+use raydeon::{SceneLighting, WorldSpace};
 
 use crate::light::PointLight;
 use crate::linear::{ArbitrarySpace, Point2, Point3, Vec3};
@@ -101,11 +101,12 @@ pub(crate) struct Scene {
 #[pymethods]
 impl Scene {
     #[new]
-    #[pyo3(signature = (geometry=None, lights=None))]
+    #[pyo3(signature = (geometry=None, lights=None, ambient_light=0.0))]
     fn new(
         py: Python,
         geometry: Option<Vec<PyObject>>,
         lights: Option<Vec<PointLight>>,
+        ambient_light: f64,
     ) -> PyResult<Self> {
         let geometry = geometry.unwrap_or_default();
         let lights = lights.unwrap_or_default();
@@ -123,10 +124,13 @@ impl Scene {
             .into_iter()
             .map(|l| Arc::new(l.0) as Arc<dyn raydeon::lights::Light>)
             .collect();
+        let lighting = SceneLighting::new()
+            .with_lights(lights)
+            .with_ambient_lighting(ambient_light);
         let scene = Arc::new(
             raydeon::Scene::new()
                 .with_geometry(geometry)
-                .with_lighting(lights),
+                .with_lighting(lighting),
         );
         Ok(Self { scene })
     }

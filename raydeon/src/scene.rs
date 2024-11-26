@@ -398,7 +398,8 @@ impl<'a> SceneCamera<'a, Material, SceneLighting> {
                     .lights
                     .iter()
                     .map(|light| light.compute_illumination(self.scene, hitpoint, &shape))
-                    .sum(),
+                    .sum::<f64>()
+                    + self.scene.lighting.ambient,
             )
         });
 

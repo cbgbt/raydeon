@@ -1,7 +1,7 @@
 use raydeon::lights::PointLight;
 use raydeon::material::Material;
 use raydeon::shapes::AxisAlignedCuboid;
-use raydeon::{Camera, Scene, WPoint3, WVec3};
+use raydeon::{Camera, Scene, SceneLighting, WPoint3, WVec3};
 use std::sync::Arc;
 
 fn main() {
@@ -27,14 +27,18 @@ fn main() {
                 Material::new(3.0, 2.0, 2.0, 0),
             )),
         ])
-        .with_lighting(vec![Arc::new(PointLight::new(
-            20.0,
-            100.0,
-            (5.5, 12.0, 7.3),
-            0.0,
-            0.09,
-            0.23,
-        ))]);
+        .with_lighting(
+            SceneLighting::new()
+                .with_lights(vec![Arc::new(PointLight::new(
+                    20.0,
+                    100.0,
+                    (5.5, 12.0, 7.3),
+                    0.0,
+                    0.09,
+                    0.23,
+                ))])
+                .with_ambient_lighting(0.13),
+        );
 
     let eye = WPoint3::new(8.0, 6.0, 4.0);
     let focus = WVec3::new(0.0, 0.0, 0.0);

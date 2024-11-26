@@ -92,7 +92,8 @@ scene = Scene(
         PySphere(Point3(0, 0, 0), 1.0, Material(3.0, 3.0, 3)),
         PyPlane(Point3(0, -2, 0), Vec3(0, 1, 0), Material(9000.0, 3.0, 3)),
     ],
-    lights=[PointLight((4, 3, 10), 4.0, 2.0, 0.15, 0.4, 0.11)],
+    lights=[PointLight((4, 3, 10), 3.6, 2.0, 0.15, 0.4, 0.11)],
+    ambient_light=0.13,
 )
 
 
