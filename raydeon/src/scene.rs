@@ -1,5 +1,5 @@
+use bon::Builder;
 use bvh::{BVHTree, Collidable};
-use camera::{Observation, Perspective};
 use collision::Continuous;
 use euclid::{Point2D, Vector2D};
 use material::Material;
@@ -12,10 +12,13 @@ use tracing::info;
 
 use crate::*;
 
-#[derive(Debug)]
-pub struct Scene<G, L> {
-    geometry: G,
-    lighting: L,
+#[derive(Debug, Builder)]
+#[builder(start_fn(name = new), finish_fn(name = construct))]
+pub struct Scene<P: PathMeta> {
+    #[builder(into)]
+    geometry: SceneGeometry<P>,
+    #[builder(into, default)]
+    lighting: SceneLighting,
 }
 
 #[derive(Debug)]
@@ -140,47 +143,8 @@ impl From<Vec<Arc<dyn Light>>> for SceneLighting {
     }
 }
 
-impl Default for Scene<(), ()> {
-    fn default() -> Self {
-        Self::new()
-    }
-}
-
-impl Scene<(), ()> {
-    pub fn new() -> Scene<(), ()> {
-        Scene {
-            geometry: (),
-            lighting: (),
-        }
-    }
-}
-
-impl<G, L> Scene<G, L> {
-    pub fn with_geometry<P>(
-        self,
-        geometry: impl Into<SceneGeometry<P>>,
-    ) -> Scene<SceneGeometry<P>, L>
-    where
-        P: PathMeta,
-    {
-        let Self { lighting, .. } = self;
-        let geometry = geometry.into();
-        Scene { geometry, lighting }
-    }
-
-    pub fn with_lighting(self, lighting: impl Into<SceneLighting>) -> Scene<G, SceneLighting> {
-        let Self { geometry, .. } = self;
-        let lighting = lighting.into();
-        Scene { geometry, lighting }
-    }
-}
-
-impl<L, P> Scene<SceneGeometry<P>, L>
-where
-    P: PathMeta,
-    L: Send + Sync + 'static,
-{
-    pub fn attach_camera(&self, camera: Camera<Perspective, Observation>) -> SceneCamera<P, L> {
+impl<P: PathMeta> Scene<P> {
+    pub fn attach_camera(&self, camera: Camera) -> SceneCamera<P> {
         SceneCamera::new(camera, self)
     }
 
@@ -205,24 +169,14 @@ where
 }
 
 #[derive(Debug)]
-pub struct SceneCamera<'s, P, L>
-where
-    P: PathMeta,
-{
-    camera: Camera<Perspective, Observation>,
-    scene: &'s Scene<SceneGeometry<P>, L>,
+pub struct SceneCamera<'s, P: PathMeta> {
+    camera: Camera,
+    scene: &'s Scene<P>,
     seed: Option<u64>,
 }
 
-impl<'a, P, L> SceneCamera<'a, P, L>
-where
-    P: PathMeta,
-    L: Send + Sync + 'static,
-{
-    pub fn new(
-        camera: Camera<Perspective, Observation>,
-        scene: &'a Scene<SceneGeometry<P>, L>,
-    ) -> Self {
+impl<'a, P: PathMeta> SceneCamera<'a, P> {
+    pub fn new(camera: Camera, scene: &'a Scene<P>) -> Self {
         SceneCamera {
             camera,
             scene,
@@ -308,7 +262,7 @@ pub struct LitScene {
     pub hatch_paths: Vec<LineSegment2D<CameraSpace>>,
 }
 
-impl<'a> SceneCamera<'a, Material, SceneLighting> {
+impl<'a> SceneCamera<'a, Material> {
     pub fn render_with_lighting(&self) -> LitScene {
         let geometry_paths = self.render();
         let mut rng = match self.seed {
@@ -331,8 +285,6 @@ impl<'a> SceneCamera<'a, Material, SceneLighting> {
         info!("Generated {} diagonal hatch lines.", diag_lines.len());
 
         let hatch_paths = [vert_lines, diag_lines].concat();
-
-        // Compute visible lighting and do screen-space hatching
 
         LitScene {
             geometry_paths,

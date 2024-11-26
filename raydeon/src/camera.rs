@@ -1,16 +1,20 @@
+use bon::Builder;
 use euclid::{Point3D, Transform3D};
 use path::SlicedSegment3D;
 
+use self::view_matrix_settings::*;
 use crate::*;
 
-#[derive(Debug, Clone)]
-pub struct Camera<P, O> {
-    pub observation: O,
-    pub perspective: P,
+#[derive(Debug, Clone, Builder, Default)]
+#[builder(start_fn(name = configure))]
+pub struct Camera {
+    pub observation: Observation,
+    pub perspective: Perspective,
+    #[builder(default)]
     pub render_options: CameraOptions,
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Builder)]
 pub struct CameraOptions {
     pub pen_px_size: f64,
     pub hatch_pixel_spacing: f64,
@@ -39,69 +43,7 @@ impl CameraOptions {
     }
 }
 
-impl Camera<NoPerspective, NoObservation> {
-    pub fn new() -> Self {
-        Self {
-            observation: NoObservation,
-            perspective: NoPerspective,
-            render_options: Default::default(),
-        }
-    }
-}
-
-impl Default for Camera<Perspective, Observation> {
-    fn default() -> Self {
-        Self {
-            observation: Observation::default(),
-            perspective: Perspective::default(),
-            render_options: Default::default(),
-        }
-    }
-}
-
-impl<P, O> Camera<P, O> {
-    pub fn look_at(
-        self,
-        eye: impl Into<WPoint3>,
-        center: impl Into<WVec3>,
-        up: impl Into<WVec3>,
-    ) -> Camera<P, Observation> {
-        let Camera {
-            perspective,
-            render_options,
-            ..
-        } = self;
-        let observation = Observation::new(eye.into(), center.into(), up.into());
-        Camera {
-            observation,
-            perspective,
-            render_options,
-        }
-    }
-
-    pub fn perspective(
-        self,
-        fovy: f64,
-        width: usize,
-        height: usize,
-        znear: f64,
-        zfar: f64,
-    ) -> Camera<Perspective, O> {
-        let Camera {
-            observation,
-            render_options,
-            ..
-        } = self;
-        let perspective = Perspective::new(fovy, width, height, znear, zfar);
-        Camera {
-            observation,
-            perspective,
-            render_options,
-        }
-    }
-}
-
-impl Camera<Perspective, Observation> {
+impl Camera {
     #[must_use]
     pub fn canvas_transformation(&self) -> Transform3D<f64, WorldSpace, CanvasSpace> {
         let p = &self.perspective;
@@ -175,9 +117,7 @@ impl Camera<Perspective, Observation> {
             dir: (world_coord.to_vector() - self.observation.eye.to_vector()).normalize(),
         }
     }
-}
 
-impl<O> Camera<Perspective, O> {
     #[must_use]
     fn min_step_size(&self) -> f64 {
         let p = &self.perspective;
@@ -193,34 +133,70 @@ impl<O> Camera<Perspective, O> {
     }
 }
 
-#[derive(Debug, Copy, Clone)]
-pub struct Observation {
-    pub eye: WPoint3,
-    pub center: WVec3,
-    pub up: WVec3,
-}
-
-impl Default for Observation {
-    fn default() -> Self {
-        Self::new((0.0, 0.0, 1.0), (0.0, 0.0, 0.0), (0.0, 1.0, 0.0))
-    }
-}
-
-/// Type parameter for a camera that isn't yet looking anywhere
-#[derive(Debug, Copy, Clone)]
-pub struct NoObservation;
-
-impl Observation {
-    pub fn new(eye: impl Into<WPoint3>, center: impl Into<WVec3>, up: impl Into<WVec3>) -> Self {
+// Expose constructors for view matrix args through `Camera`
+impl Camera {
+    pub fn look_at(
+        eye: impl Into<WPoint3>,
+        center: impl Into<WVec3>,
+        up: impl Into<WVec3>,
+    ) -> Observation {
         let eye = eye.into();
         let center = center.into();
         let up = up.into().normalize();
 
-        Self { eye, center, up }
+        Observation { eye, center, up }
     }
 
+    pub fn perspective(
+        fovy: f64,
+        width: usize,
+        height: usize,
+        znear: f64,
+        zfar: f64,
+    ) -> Perspective {
+        let aspect = width as f64 / height as f64;
+        Perspective {
+            fovy,
+            width,
+            height,
+            aspect,
+            znear,
+            zfar,
+        }
+    }
+}
+
+mod view_matrix_settings {
+    use super::*;
+
+    #[derive(Debug, Copy, Clone)]
+    pub struct Observation {
+        pub eye: WPoint3,
+        pub center: WVec3,
+        pub up: WVec3,
+    }
+
+    impl Default for Observation {
+        fn default() -> Self {
+            Self::look_at((0.0, 0.0, 1.0), (0.0, 0.0, 0.0), (0.0, 1.0, 0.0))
+        }
+    }
+
+    impl Observation {
+        pub fn look_at(
+            eye: impl Into<WPoint3>,
+            center: impl Into<WVec3>,
+            up: impl Into<WVec3>,
+        ) -> Self {
+            let eye = eye.into();
+            let center = center.into();
+            let up = up.into().normalize();
+
+            Self { eye, center, up }
+        }
+
     #[rustfmt::skip]
-    pub fn look_matrix(&self) -> WCTransform {
+        pub fn look_matrix(&self) -> WCTransform {
         let Observation { eye, center, up, .. } = *self;
         let f = (center - eye.to_vector()).normalize();
         let s = f.cross(up).normalize();
@@ -240,38 +216,35 @@ impl Observation {
         .inverse()
         .unwrap()
     }
-}
-
-#[derive(Debug, Copy, Clone)]
-pub struct Perspective {
-    pub fovy: f64,
-    pub width: usize,
-    pub height: usize,
-    pub aspect: f64,
-    pub znear: f64,
-    pub zfar: f64,
-}
-
-impl Default for Perspective {
-    fn default() -> Self {
-        Self::new(45.0, 1920, 1080, 0.1, 100.0)
     }
-}
 
-/// Type parameter for a camera that doesn't yet have a defined perspective
-#[derive(Debug, Copy, Clone)]
-pub struct NoPerspective;
+    #[derive(Debug, Copy, Clone)]
+    pub struct Perspective {
+        pub fovy: f64,
+        pub width: usize,
+        pub height: usize,
+        pub aspect: f64,
+        pub znear: f64,
+        pub zfar: f64,
+    }
 
-impl Perspective {
-    pub fn new(fovy: f64, width: usize, height: usize, znear: f64, zfar: f64) -> Self {
-        let aspect = width as f64 / height as f64;
-        Self {
-            fovy,
-            width,
-            height,
-            aspect,
-            znear,
-            zfar,
+    impl Default for Perspective {
+        fn default() -> Self {
+            Self::new(45.0, 1920, 1080, 0.1, 100.0)
+        }
+    }
+
+    impl Perspective {
+        pub fn new(fovy: f64, width: usize, height: usize, znear: f64, zfar: f64) -> Self {
+            let aspect = width as f64 / height as f64;
+            Self {
+                fovy,
+                width,
+                height,
+                aspect,
+                znear,
+                zfar,
+            }
         }
     }
 }

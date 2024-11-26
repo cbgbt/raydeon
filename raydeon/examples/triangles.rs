@@ -8,18 +8,20 @@ fn main() {
         .format_timestamp_nanos()
         .init();
 
-    let scene = Scene::new().with_geometry(vec![
-        Arc::new(Triangle::new(
-            WPoint3::new(0.0, 0.0, 0.0),
-            WPoint3::new(0.0, 0.0, 1.0),
-            WPoint3::new(1.0, 0.0, 1.0),
-        )),
-        Arc::new(Triangle::new(
-            WPoint3::new(0.25, 0.25, 0.0),
-            WPoint3::new(0.0, 0.25, 1.0),
-            WPoint3::new(-0.65, 0.25, 1.0),
-        )),
-    ]);
+    let scene = Scene::new()
+        .geometry(vec![
+            Arc::new(Triangle::new(
+                WPoint3::new(0.0, 0.0, 0.0),
+                WPoint3::new(0.0, 0.0, 1.0),
+                WPoint3::new(1.0, 0.0, 1.0),
+            )),
+            Arc::new(Triangle::new(
+                WPoint3::new(0.25, 0.25, 0.0),
+                WPoint3::new(0.0, 0.25, 1.0),
+                WPoint3::new(-0.65, 0.25, 1.0),
+            )),
+        ])
+        .construct();
 
     let eye = WPoint3::new(0.0, 3.0, 0.0);
     let focus = WVec3::new(0.0, 0.0, 0.0);
@@ -33,9 +35,10 @@ fn main() {
     let znear = 0.1;
     let zfar = 10.0;
 
-    let camera = Camera::new()
-        .look_at(eye, focus, up)
-        .perspective(fovy, width, height, znear, zfar);
+    let camera = Camera::configure()
+        .observation(Camera::look_at(eye, focus, up))
+        .perspective(Camera::perspective(fovy, width, height, znear, zfar))
+        .build();
 
     let paths = scene.attach_camera(camera).render();
 

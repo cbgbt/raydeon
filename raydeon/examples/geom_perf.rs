@@ -20,11 +20,12 @@ fn main() {
     let znear = 0.1;
     let zfar = 100.0;
 
-    let scene = Scene::new().with_geometry(generate_scene());
+    let scene = Scene::new().geometry(generate_scene()).construct();
 
-    let camera = Camera::new()
-        .look_at(eye, focus, up)
-        .perspective(fovy, width, height, znear, zfar);
+    let camera = Camera::configure()
+        .observation(Camera::look_at(eye, focus, up))
+        .perspective(Camera::perspective(fovy, width, height, znear, zfar))
+        .build();
 
     let paths = scene.attach_camera(camera).render();
 

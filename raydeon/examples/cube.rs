@@ -1,5 +1,5 @@
 use raydeon::shapes::AxisAlignedCuboid;
-use raydeon::{Camera, Scene, WPoint3, WVec3};
+use raydeon::{Camera, CameraOptions, Scene, WPoint3, WVec3};
 use std::sync::Arc;
 
 fn main() {
@@ -7,10 +7,12 @@ fn main() {
         .format_timestamp_nanos()
         .init();
 
-    let scene = Scene::new().with_geometry(vec![Arc::new(AxisAlignedCuboid::new(
-        WVec3::new(-1.0, -1.0, -1.0),
-        WVec3::new(1.0, 1.0, 1.0),
-    ))]);
+    let scene = Scene::new()
+        .geometry(vec![Arc::new(AxisAlignedCuboid::new(
+            WVec3::new(-1.0, -1.0, -1.0),
+            WVec3::new(1.0, 1.0, 1.0),
+        ))])
+        .construct();
 
     let eye = WPoint3::new(4.0, 3.0, 2.0);
     let focus = WVec3::new(0.0, 0.0, 0.0);
@@ -22,9 +24,11 @@ fn main() {
     let znear = 0.1;
     let zfar = 10.0;
 
-    let camera = Camera::new()
-        .look_at(eye, focus, up)
-        .perspective(fovy, width, height, znear, zfar);
+    let camera = Camera::configure()
+        .observation(Camera::look_at(eye, focus, up))
+        .perspective(Camera::perspective(fovy, width, height, znear, zfar))
+        .render_options(CameraOptions::defaults_for_pen_px_size(4.0))
+        .build();
 
     let paths = scene.attach_camera(camera).render();
 

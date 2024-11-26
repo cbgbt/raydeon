@@ -1,14 +1,11 @@
 use material::Material;
-use scene::{SceneGeometry, SceneLighting};
 
 use crate::*;
-
-type LitScene = Scene<SceneGeometry<Material>, SceneLighting>;
 
 pub trait Light: std::fmt::Debug + Send + Sync + 'static {
     fn compute_illumination(
         &self,
-        scene: &Scene<SceneGeometry<Material>, SceneLighting>,
+        scene: &Scene<Material>,
         hitpoint: HitData,
         shape: &Arc<dyn Shape<WorldSpace, Material>>,
     ) -> f64;
@@ -28,7 +25,7 @@ pub struct PointLight {
 impl Light for PointLight {
     fn compute_illumination(
         &self,
-        scene: &LitScene,
+        scene: &Scene<Material>,
         hitpoint: HitData,
         shape: &Arc<dyn Shape<WorldSpace, Material>>,
     ) -> f64 {
@@ -128,7 +125,7 @@ impl PointLight {
 
     fn light_hitpoint_for_hit(
         &self,
-        scene: &LitScene,
+        scene: &Scene<Material>,
         hitpoint: HitData,
         shape: &Arc<dyn Shape<WorldSpace, Material>>,
     ) -> Option<HitData> {

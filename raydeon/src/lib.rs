@@ -11,8 +11,9 @@ pub mod shapes;
 
 use std::sync::Arc;
 
-pub use camera::{Camera, NoObservation, NoPerspective, Observation, Perspective};
+pub use camera::{Camera, CameraOptions};
 pub use lights::Light;
+pub use material::Material;
 pub use path::{LineSegment3D, PathMeta};
 pub use ray::{HitData, Ray};
 pub use scene::{Scene, SceneGeometry, SceneLighting};
@@ -54,7 +55,7 @@ where
 {
     fn collision_geometry(&self) -> Option<Vec<Arc<dyn CollisionGeometry<Space>>>>;
     fn metadata(&self) -> Meta;
-    fn paths(&self, cam: &Camera<Perspective, Observation>) -> Vec<LineSegment3D<Space, Meta>>;
+    fn paths(&self, cam: &Camera) -> Vec<LineSegment3D<Space, Meta>>;
 }
 
 pub trait CollisionGeometry<Space>: Send + Sync + std::fmt::Debug

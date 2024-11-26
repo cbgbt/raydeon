@@ -1,6 +1,6 @@
 use raydeon::lights::PointLight;
-use raydeon::material::Material;
 use raydeon::shapes::AxisAlignedCuboid;
+use raydeon::Material;
 use raydeon::{Camera, Scene, SceneLighting, WPoint3, WVec3};
 use std::sync::Arc;
 
@@ -10,7 +10,7 @@ fn main() {
         .init();
 
     let scene = Scene::new()
-        .with_geometry(vec![
+        .geometry(vec![
             Arc::new(AxisAlignedCuboid::tagged(
                 (-1.0, -1.0, -1.0),
                 (1.0, 1.0, 1.0),
@@ -27,7 +27,7 @@ fn main() {
                 Material::new(3.0, 2.0, 2.0, 0),
             )),
         ])
-        .with_lighting(
+        .lighting(
             SceneLighting::new()
                 .with_lights(vec![Arc::new(PointLight::new(
                     20.0,
@@ -38,7 +38,8 @@ fn main() {
                     0.23,
                 ))])
                 .with_ambient_lighting(0.13),
-        );
+        )
+        .construct();
 
     let eye = WPoint3::new(8.0, 6.0, 4.0);
     let focus = WVec3::new(0.0, 0.0, 0.0);
@@ -50,9 +51,10 @@ fn main() {
     let znear = 0.1;
     let zfar = 20.0;
 
-    let camera = Camera::new()
-        .look_at(eye, focus, up)
-        .perspective(fovy, width, height, znear, zfar);
+    let camera = Camera::configure()
+        .observation(Camera::look_at(eye, focus, up))
+        .perspective(Camera::perspective(fovy, width, height, znear, zfar))
+        .build();
 
     let render_result = scene
         .attach_camera(camera)

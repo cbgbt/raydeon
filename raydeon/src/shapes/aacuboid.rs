@@ -5,8 +5,7 @@ use std::sync::Arc;
 
 use crate::path::LineSegment3D;
 use crate::{
-    Camera, CollisionGeometry, HitData, Observation, PathMeta, Perspective, Ray, Shape, WPoint3,
-    WVec3, WorldSpace, AABB3,
+    Camera, CollisionGeometry, HitData, PathMeta, Ray, Shape, WPoint3, WVec3, WorldSpace, AABB3,
 };
 
 #[derive(Debug, Copy, Clone)]
@@ -49,7 +48,7 @@ impl<P: PathMeta> Shape<WorldSpace, P> for AxisAlignedCuboid<P> {
         Some(vec![Arc::new(self.clone())])
     }
 
-    fn paths(&self, _cam: &Camera<Perspective, Observation>) -> Vec<LineSegment3D<WorldSpace, P>> {
+    fn paths(&self, _cam: &Camera) -> Vec<LineSegment3D<WorldSpace, P>> {
         let expand = (self.max - self.min).normalize() * 0.003;
         let pathmin = self.min - expand;
         let pathmax = self.max + expand;

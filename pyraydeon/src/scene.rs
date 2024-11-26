@@ -11,18 +11,18 @@ use crate::shapes::Geometry;
 
 #[derive(Debug, Clone)]
 #[pyclass(frozen)]
-pub(crate) struct Camera(pub(crate) raydeon::Camera<raydeon::Perspective, raydeon::Observation>);
+pub(crate) struct Camera(pub(crate) raydeon::Camera);
 
 impl ::std::ops::Deref for Camera {
-    type Target = raydeon::Camera<raydeon::Perspective, raydeon::Observation>;
+    type Target = raydeon::Camera;
 
     fn deref(&self) -> &Self::Target {
         &self.0
     }
 }
 
-impl From<raydeon::Camera<raydeon::Perspective, raydeon::Observation>> for Camera {
-    fn from(value: raydeon::Camera<raydeon::Perspective, raydeon::Observation>) -> Self {
+impl From<raydeon::Camera> for Camera {
+    fn from(value: raydeon::Camera) -> Self {
         Self(value)
     }
 }
@@ -43,18 +43,16 @@ impl Camera {
         let eye = Point3::try_from(eye)?;
         let center = Vec3::try_from(center)?;
         let up = Vec3::try_from(up)?;
-        Ok(self
-            .0
-            .clone()
-            .look_at(eye.cast_unit(), center.cast_unit(), up.cast_unit())
-            .into())
+        let mut ncam = self.0.clone();
+        ncam.observation =
+            raydeon::Camera::look_at(eye.cast_unit(), center.cast_unit(), up.cast_unit());
+        Ok(ncam.into())
     }
 
     fn perspective(&self, fovy: f64, width: usize, height: usize, znear: f64, zfar: f64) -> Camera {
-        self.0
-            .clone()
-            .perspective(fovy, width, height, znear, zfar)
-            .into()
+        let mut ncam = self.0.clone();
+        ncam.perspective = raydeon::Camera::perspective(fovy, width, height, znear, zfar);
+        ncam.into()
     }
 
     #[getter]
@@ -110,12 +108,7 @@ impl Camera {
 
 #[pyclass(frozen)]
 pub(crate) struct Scene {
-    scene: Arc<
-        raydeon::Scene<
-            raydeon::scene::SceneGeometry<raydeon::material::Material>,
-            raydeon::scene::SceneLighting,
-        >,
-    >,
+    scene: Arc<raydeon::Scene<raydeon::Material>>,
 }
 
 #[pymethods]
@@ -149,8 +142,9 @@ impl Scene {
             .with_ambient_lighting(ambient_light);
         let scene = Arc::new(
             raydeon::Scene::new()
-                .with_geometry(geometry)
-                .with_lighting(lighting),
+                .geometry(geometry)
+                .lighting(lighting)
+                .construct(),
         );
         Ok(Self { scene })
     }

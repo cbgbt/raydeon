@@ -202,7 +202,7 @@ impl raydeon::Shape<WorldSpace, raydeon::material::Material> for PythonGeometry 
 
     fn paths(
         &self,
-        cam: &raydeon::Camera<raydeon::Perspective, raydeon::Observation>,
+        cam: &raydeon::Camera,
     ) -> Vec<raydeon::path::LineSegment3D<WorldSpace, raydeon::material::Material>> {
         let segments: Option<_> = Python::with_gil(|py| {
             let inner = self.slf.bind(py);
