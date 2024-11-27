@@ -1,15 +1,22 @@
 use crate::Material;
+use bon::Builder;
 use euclid::*;
 use std::collections::{BTreeSet, HashSet};
 
-#[derive(Debug, Copy, Clone)]
+#[derive(Debug, Copy, Clone, Builder)]
+#[builder(start_fn(name = new))]
 pub struct LineSegment3D<Space>
 where
     Space: Copy + Clone + std::fmt::Debug,
 {
+    #[builder(into)]
     p1: Point3D<f64, Space>,
+    #[builder(into)]
     p2: Point3D<f64, Space>,
+
+    #[builder(skip = (p2 - p1).normalize())]
     norm_dir: Vector3D<f64, Space>,
+    #[builder(skip = (p2 - p1).length())]
     length: f64,
     material: Option<Material>,
 }
@@ -18,39 +25,23 @@ impl<Space> LineSegment3D<Space>
 where
     Space: Copy + Clone + std::fmt::Debug,
 {
-    pub fn new(
-        p1: Point3D<f64, Space>,
-        p2: Point3D<f64, Space>,
-        material: Option<Material>,
-    ) -> Self {
-        let dir = p2 - p1;
-        let length = dir.length();
-        let norm_dir = dir.normalize();
-        Self {
-            p1,
-            p2,
-            length,
-            norm_dir,
-            material,
-        }
-    }
-
-    pub fn new_segment(p1: Point3D<f64, Space>, p2: Point3D<f64, Space>) -> Self {
-        let dir = p2 - p1;
-        let length = dir.length();
-        let norm_dir = dir.normalize();
-        Self {
-            p1,
-            p2,
-            length,
-            norm_dir,
-            material: None,
-        }
-    }
-
-    pub fn with_material(mut self, material: Material) -> Self {
-        self.material = Some(material);
-        self
+    pub fn from_points(
+        pairs: Vec<(
+            impl Into<Point3D<f64, Space>>,
+            impl Into<Point3D<f64, Space>>,
+        )>,
+        mat: Option<Material>,
+    ) -> Vec<LineSegment3D<Space>> {
+        pairs
+            .into_iter()
+            .map(|(p1, p2)| {
+                LineSegment3D::new()
+                    .p1(p1.into())
+                    .p2(p2.into())
+                    .maybe_material(mat)
+                    .build()
+            })
+            .collect()
     }
 
     pub fn p1(&self) -> Point3D<f64, Space> {
@@ -84,12 +75,11 @@ where
     where
         U: Copy + Clone + std::fmt::Debug,
     {
-        let slf = LineSegment3D::new_segment(self.p1.cast_unit(), self.p2.cast_unit());
-        if let Some(material) = self.material {
-            slf.with_material(material)
-        } else {
-            slf
-        }
+        LineSegment3D::new()
+            .p1(self.p1.cast_unit())
+            .p2(self.p2.cast_unit())
+            .maybe_material(self.material)
+            .build()
     }
 
     pub fn xy(self) -> LineSegment2D<Space> {
@@ -114,7 +104,15 @@ where
         let (p1, p2) = (self.p1, self.p2);
         let p1t = transformation.transform_point3d(p1);
         let p2t = transformation.transform_point3d(p2);
-        p1t.and_then(|p1| p2t.map(|p2| LineSegment3D::new(p1, p2, self.material)))
+        p1t.and_then(|p1| {
+            p2t.map(|p2| {
+                LineSegment3D::new()
+                    .p1(p1)
+                    .p2(p2)
+                    .maybe_material(self.material)
+                    .build()
+            })
+        })
     }
 
     pub fn transform_without_metadata<Dst>(
@@ -127,7 +125,7 @@ where
         let (p1, p2) = (self.p1, self.p2);
         let p1t = transformation.transform_point3d(p1);
         let p2t = transformation.transform_point3d(p2);
-        p1t.and_then(|p1| p2t.map(|p2| LineSegment3D::new_segment(p1, p2)))
+        p1t.and_then(|p1| p2t.map(|p2| LineSegment3D::new().p1(p1).p2(p2).build()))
     }
 }
 
@@ -166,7 +164,7 @@ where
         let segment_vec = self.parent.dir() * self.subsegment_len();
         let start = self.parent.p1 + segment_vec * (ndx as f64);
         let end = start + segment_vec;
-        LineSegment3D::new_segment(start, end)
+        LineSegment3D::new().p1(start).p2(end).build()
     }
 
     pub fn subsegments(&self) -> impl Iterator<Item = LineSegment3D<Space>> + '_ {
@@ -234,7 +232,11 @@ where
             .map(|ndx_group| {
                 let start = self.get_subsegment(*ndx_group.start()).p1;
                 let end = self.get_subsegment(*ndx_group.end()).p2;
-                LineSegment3D::new(start, end, self.parent.material)
+                LineSegment3D::new()
+                    .p1(start)
+                    .p2(end)
+                    .maybe_material(self.parent.material)
+                    .build()
             })
             .collect()
     }

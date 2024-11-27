@@ -5,6 +5,13 @@ use path::SlicedSegment3D;
 use self::view_matrix_settings::*;
 use crate::*;
 
+pub const DEFAULT_PEN_PX_SIZE: f64 = 4.0;
+pub const DEFAULT_HATCH_PIXEL_SPACING_FACTOR: f64 = 2.0;
+pub const DEFAULT_HATCH_PIXEL_CHOP_QUOTIENT: f64 = 3.0;
+pub const DEFAULT_HATCH_SLICE_FORGIVENESS: usize = 1;
+pub const DEFAULT_VERT_HATCH_BRIGHTNESS_SCALING: f64 = 0.8;
+pub const DEFAULT_DIAG_HATCH_BRIGHTNESS_SCALING: f64 = 0.46;
+
 #[derive(Debug, Clone, Builder, Default)]
 #[builder(start_fn(name = configure))]
 pub struct Camera {
@@ -15,31 +22,25 @@ pub struct Camera {
 }
 
 #[derive(Debug, Clone, Builder)]
+#[builder(start_fn(name = configure))]
 pub struct CameraOptions {
+    #[builder(default = DEFAULT_PEN_PX_SIZE)]
     pub pen_px_size: f64,
+    #[builder(default = pen_px_size * DEFAULT_HATCH_PIXEL_SPACING_FACTOR)]
     pub hatch_pixel_spacing: f64,
+    #[builder(default = pen_px_size / DEFAULT_HATCH_PIXEL_CHOP_QUOTIENT)]
     pub hatch_pixel_chop_factor: f64,
+    #[builder(default = DEFAULT_HATCH_SLICE_FORGIVENESS)]
     pub hatch_slice_forgiveness: usize,
+    #[builder(default = DEFAULT_VERT_HATCH_BRIGHTNESS_SCALING)]
     pub vert_hatch_brightness_scaling: f64,
+    #[builder(default = DEFAULT_DIAG_HATCH_BRIGHTNESS_SCALING)]
     pub diag_hatch_brightness_scaling: f64,
 }
 
 impl Default for CameraOptions {
     fn default() -> Self {
-        Self::defaults_for_pen_px_size(4.0)
-    }
-}
-
-impl CameraOptions {
-    pub fn defaults_for_pen_px_size(px_size: f64) -> Self {
-        Self {
-            pen_px_size: px_size,
-            hatch_pixel_spacing: px_size * 2.0,
-            hatch_pixel_chop_factor: px_size / 3.0,
-            hatch_slice_forgiveness: 1,
-            vert_hatch_brightness_scaling: 0.8,
-            diag_hatch_brightness_scaling: 0.46,
-        }
+        Self::configure().build()
     }
 }
 

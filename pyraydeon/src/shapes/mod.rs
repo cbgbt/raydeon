@@ -8,9 +8,10 @@ mod primitive;
 
 pub(crate) use primitive::{AxisAlignedCuboid, Tri};
 
+use crate::camera::Camera;
 use crate::material::Material;
 use crate::ray::{HitData, Ray, AABB3};
-use crate::scene::{Camera, LineSegment3D};
+use crate::scene::LineSegment3D;
 
 #[derive(Debug)]
 enum InnerGeometry {

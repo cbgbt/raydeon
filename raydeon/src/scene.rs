@@ -298,7 +298,12 @@ impl<'a> SceneCamera<'a> {
     ) -> Vec<LineSegment2D<CameraSpace>> {
         let segments = segments
             .iter()
-            .map(|segment| LineSegment3D::new_segment(segment.p1.to_3d(), segment.p2.to_3d()))
+            .map(|segment| {
+                LineSegment3D::new()
+                    .p1(segment.p1.to_3d())
+                    .p2(segment.p2.to_3d())
+                    .build()
+            })
             .collect::<Vec<_>>();
         let mut split_segments = segments
             .iter()

@@ -4,107 +4,11 @@ use numpy::{Ix1, PyArray, PyReadonlyArray1};
 use pyo3::prelude::*;
 use raydeon::SceneLighting;
 
+use crate::camera::Camera;
 use crate::light::PointLight;
-use crate::linear::{ArbitrarySpace, Point2, Point3, Vec3};
+use crate::linear::{ArbitrarySpace, Point2, Point3};
 use crate::material::Material;
 use crate::shapes::Geometry;
-
-#[derive(Debug, Clone)]
-#[pyclass(frozen)]
-pub(crate) struct Camera(pub(crate) raydeon::Camera);
-
-impl ::std::ops::Deref for Camera {
-    type Target = raydeon::Camera;
-
-    fn deref(&self) -> &Self::Target {
-        &self.0
-    }
-}
-
-impl From<raydeon::Camera> for Camera {
-    fn from(value: raydeon::Camera) -> Self {
-        Self(value)
-    }
-}
-
-#[pymethods]
-impl Camera {
-    #[new]
-    fn new() -> Self {
-        raydeon::Camera::default().into()
-    }
-
-    fn look_at(
-        &self,
-        eye: &Bound<'_, PyAny>,
-        center: &Bound<'_, PyAny>,
-        up: &Bound<'_, PyAny>,
-    ) -> PyResult<Camera> {
-        let eye = Point3::try_from(eye)?;
-        let center = Vec3::try_from(center)?;
-        let up = Vec3::try_from(up)?;
-        let mut ncam = self.0.clone();
-        ncam.observation =
-            raydeon::Camera::look_at(eye.cast_unit(), center.cast_unit(), up.cast_unit());
-        Ok(ncam.into())
-    }
-
-    fn perspective(&self, fovy: f64, width: usize, height: usize, znear: f64, zfar: f64) -> Camera {
-        let mut ncam = self.0.clone();
-        ncam.perspective = raydeon::Camera::perspective(fovy, width, height, znear, zfar);
-        ncam.into()
-    }
-
-    #[getter]
-    fn eye<'py>(&self, py: Python<'py>) -> Bound<'py, PyArray<f64, Ix1>> {
-        PyArray::from_slice_bound(py, &self.0.observation.eye.to_array())
-    }
-
-    #[getter]
-    fn focus<'py>(&self, py: Python<'py>) -> Bound<'py, PyArray<f64, Ix1>> {
-        PyArray::from_slice_bound(py, &self.0.observation.center.to_array())
-    }
-
-    #[getter]
-    fn up<'py>(&self, py: Python<'py>) -> Bound<'py, PyArray<f64, Ix1>> {
-        PyArray::from_slice_bound(py, &self.0.observation.up.to_array())
-    }
-
-    #[getter]
-    fn fovy(&self) -> f64 {
-        self.0.perspective.fovy
-    }
-
-    #[getter]
-    fn width(&self) -> usize {
-        self.0.perspective.width
-    }
-
-    #[getter]
-    fn height(&self) -> usize {
-        self.0.perspective.height
-    }
-
-    #[getter]
-    fn aspect(&self) -> f64 {
-        self.0.perspective.aspect
-    }
-
-    #[getter]
-    fn znear(&self) -> f64 {
-        self.0.perspective.znear
-    }
-
-    #[getter]
-    fn zfar(&self) -> f64 {
-        self.0.perspective.zfar
-    }
-
-    fn __repr__(slf: &Bound<'_, Self>) -> PyResult<String> {
-        let class_name = slf.get_type().qualname()?;
-        Ok(format!("{}<{:?}>", class_name, slf.borrow().0))
-    }
-}
 
 #[pyclass(frozen)]
 pub(crate) struct Scene {
@@ -228,14 +132,12 @@ impl LineSegment3D {
     ) -> PyResult<Self> {
         let p1 = Point3::try_from(p1)?;
         let p2 = Point3::try_from(p2)?;
-        Ok(
-            raydeon::path::LineSegment3D::new(
-                p1.cast_unit(),
-                p2.cast_unit(),
-                material.map(|i| i.0),
-            )
-            .into(),
-        )
+        Ok(raydeon::path::LineSegment3D::new()
+            .p1(p1.cast_unit())
+            .p2(p2.cast_unit())
+            .maybe_material(material.map(|i| i.0))
+            .build()
+            .into())
     }
 
     #[getter]
@@ -255,7 +157,6 @@ impl LineSegment3D {
 }
 
 pub(crate) fn register(m: &Bound<'_, PyModule>) -> PyResult<()> {
-    m.add_class::<Camera>()?;
     m.add_class::<Scene>()?;
     m.add_class::<LineSegment2D>()?;
     m.add_class::<LineSegment3D>()?;

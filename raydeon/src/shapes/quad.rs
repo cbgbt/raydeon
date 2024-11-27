@@ -67,11 +67,9 @@ impl Shape for Quad {
             .map(|v| v + (v.to_vector() - centroid).normalize() * 0.0015)
             .collect::<Vec<_>>();
 
-        vec![
-            LineSegment3D::new(v[0], v[1], self.material),
-            LineSegment3D::new(v[1], v[2], self.material),
-            LineSegment3D::new(v[2], v[3], self.material),
-            LineSegment3D::new(v[3], v[0], self.material),
-        ]
+        LineSegment3D::from_points(
+            vec![(v[0], v[1]), (v[1], v[2]), (v[2], v[3]), (v[3], v[0])],
+            self.material,
+        )
     }
 }

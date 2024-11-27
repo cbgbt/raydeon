@@ -29,7 +29,7 @@ fn main() {
     let camera = Camera::configure()
         .observation(Camera::look_at(eye, focus, up))
         .perspective(Camera::perspective(fovy, width, height, znear, zfar))
-        .render_options(CameraOptions::defaults_for_pen_px_size(4.0))
+        .render_options(CameraOptions::configure().pen_px_size(4.0).build())
         .build();
 
     let paths = scene.attach_camera(camera).render();

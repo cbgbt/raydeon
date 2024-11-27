@@ -52,11 +52,7 @@ impl Shape for Triangle {
         let v1 = v1 + (v1 - centroid).normalize() * 0.015;
         let v2 = v2 + (v2 - centroid).normalize() * 0.015;
 
-        vec![
-            LineSegment3D::new(v0, v1, self.material),
-            LineSegment3D::new(v1, v2, self.material),
-            LineSegment3D::new(v2, v0, self.material),
-        ]
+        LineSegment3D::from_points(vec![(v0, v1), (v1, v2), (v2, v0)], self.material)
     }
 }
 

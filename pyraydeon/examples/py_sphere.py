@@ -13,6 +13,7 @@ from pyraydeon import (
     PointLight,
     Plane,
     LineSegment3D,
+    CameraOptions,
 )
 
 
@@ -107,7 +108,16 @@ height = 1024
 znear = 0.1
 zfar = 100.0
 
-cam = Camera().look_at(eye, focus, up).perspective(fovy, width, height, znear, zfar)
+render_opts = CameraOptions(pen_px_size=4.0)
+
+assert render_opts.hatch_slice_forgiveness == 1
+
+cam = (
+    Camera()
+    .look_at(eye, focus, up)
+    .perspective(fovy, width, height, znear, zfar)
+    .render_options(render_opts)
+)
 
 paths = scene.render_with_lighting(cam, seed=5)
 

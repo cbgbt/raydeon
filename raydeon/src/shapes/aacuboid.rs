@@ -56,20 +56,23 @@ impl Shape for AxisAlignedCuboid {
         let p7 = WPoint3::new(x2, y2, z2);
         let p8 = WPoint3::new(x1, y2, z2);
 
-        vec![
-            LineSegment3D::new(p1, p2, self.material),
-            LineSegment3D::new(p2, p3, self.material),
-            LineSegment3D::new(p3, p4, self.material),
-            LineSegment3D::new(p4, p1, self.material),
-            LineSegment3D::new(p5, p6, self.material),
-            LineSegment3D::new(p6, p7, self.material),
-            LineSegment3D::new(p7, p8, self.material),
-            LineSegment3D::new(p8, p5, self.material),
-            LineSegment3D::new(p1, p5, self.material),
-            LineSegment3D::new(p2, p6, self.material),
-            LineSegment3D::new(p3, p7, self.material),
-            LineSegment3D::new(p4, p8, self.material),
-        ]
+        LineSegment3D::from_points(
+            vec![
+                (p1, p2),
+                (p2, p3),
+                (p3, p4),
+                (p4, p1),
+                (p5, p6),
+                (p6, p7),
+                (p7, p8),
+                (p8, p5),
+                (p1, p5),
+                (p2, p6),
+                (p3, p7),
+                (p4, p8),
+            ],
+            self.material,
+        )
     }
 }
 

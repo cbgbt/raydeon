@@ -2,7 +2,7 @@ use pyo3::prelude::*;
 
 macro_rules! pywrap {
     ($name:ident, $wraps:ty) => {
-        #[derive(Debug, Clone, Copy)]
+        #[derive(Debug, Clone)]
         #[pyclass(frozen)]
         pub(crate) struct $name(pub(crate) $wraps);
 
@@ -22,6 +22,7 @@ macro_rules! pywrap {
     };
 }
 
+mod camera;
 mod light;
 mod linear;
 mod material;
@@ -33,10 +34,15 @@ mod shapes;
 #[pymodule]
 fn pyraydeon(m: &Bound<'_, PyModule>) -> PyResult<()> {
     crate::linear::register(m)?;
-    crate::shapes::register(m)?;
+
+    crate::camera::register(m)?;
     crate::scene::register(m)?;
+
     crate::ray::register(m)?;
+
+    crate::shapes::register(m)?;
     crate::material::register(m)?;
     crate::light::register(m)?;
+
     Ok(())
 }
