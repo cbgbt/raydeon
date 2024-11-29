@@ -1,16 +1,22 @@
 use crate::EPSILON;
+use bon::{builder, Builder};
 use float_cmp::{approx_eq, ApproxEq};
 
-#[derive(Debug, Clone, Copy, Default)]
+#[derive(Debug, Clone, Copy, Default, Builder)]
+#[builder(start_fn(name = new))]
 pub struct Material {
+    #[builder(default)]
     pub diffuse: f64,
+    #[builder(default)]
     pub specular: f64,
+    #[builder(default)]
     pub shininess: f64,
+    #[builder(default)]
     pub tag: usize,
 }
 
 impl Material {
-    pub fn new(diffuse: f64, specular: f64, shininess: f64, tag: usize) -> Self {
+    pub fn new_mat(diffuse: f64, specular: f64, shininess: f64, tag: usize) -> Self {
         Self {
             diffuse,
             specular,

@@ -9,6 +9,7 @@ mod primitive;
 pub(crate) use primitive::{AxisAlignedCuboid, Tri};
 
 use crate::camera::Camera;
+use crate::drawables::{raydeon_geometry_from_py_object, DrawableShape};
 use crate::material::Material;
 use crate::ray::{HitData, Ray, AABB3};
 use crate::scene::LineSegment3D;
@@ -71,19 +72,40 @@ impl Geometry {
         match &self.geom {
             InnerGeometry::Native(geom) => py.allow_threads(|| {
                 let paths = geom.paths(&cam.0);
-                paths
-                    .into_iter()
-                    .map(raydeon::path::LineSegment3D::cast_unit)
-                    .map(Into::into)
-                    .collect()
+                paths.into_iter().map(Into::into).collect()
             }),
             InnerGeometry::Py => Vec::new(),
         }
     }
 
+    fn with_material(slf: &Bound<'_, Self>, mat: Material, py: Python) -> PyResult<DrawableShape> {
+        let obj_ptr = slf.as_any().as_unbound().clone_ref(py);
+        let radeon_geom = raydeon_geometry_from_py_object(py, &obj_ptr)?;
+
+        let raydeon_drawable = raydeon::DrawableShape::new()
+            .geometry(radeon_geom)
+            .material(mat.0)
+            .build();
+
+        Ok(DrawableShape {
+            raydeon_drawable,
+            pyobj: obj_ptr,
+        })
+    }
+
+    #[getter]
+    fn shape(slf: &Bound<'_, Self>, py: Python) -> PyObject {
+        slf.as_any().as_unbound().clone_ref(py)
+    }
+
+    #[getter]
+    fn material(&self) -> Option<Material> {
+        None
+    }
+
     fn __repr__(slf: &Bound<'_, Self>) -> PyResult<String> {
         let class_name = slf.get_type().qualname()?;
-        Ok(format!("{}<{:#?}>", class_name, slf.borrow().geom))
+        Ok(format!("{}<{:#?}>", class_name, slf.borrow()))
     }
 }
 
@@ -209,26 +231,9 @@ impl raydeon::Shape for PythonGeometry {
                 .extract::<Option<Vec<LineSegment3D>>>()
                 .unwrap()?;
 
-            Some(
-                segments
-                    .into_iter()
-                    .map(|segment| segment.0.cast_unit())
-                    .collect(),
-            )
+            Some(segments.into_iter().map(Into::into).collect())
         });
         segments.unwrap_or_default()
-    }
-
-    fn metadata(&self) -> raydeon::material::Material {
-        let material: Option<Material> = Python::with_gil(|py| {
-            let inner = self.slf.bind(py);
-            let attr_value = inner.getattr("material").ok()?;
-
-            let material: Material = attr_value.extract().ok()?;
-
-            Some(material)
-        });
-        material.unwrap_or_default().0
     }
 }
 

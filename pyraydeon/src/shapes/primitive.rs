@@ -1,6 +1,5 @@
 use super::{CollisionGeometry, Geometry};
 use crate::linear::{Point3, Vec3};
-use crate::material::Material;
 use numpy::{Ix1, PyArray, PyArrayLike1, PyArrayLike2};
 use pyo3::exceptions::PyIndexError;
 use pyo3::prelude::*;
@@ -26,12 +25,8 @@ impl From<Arc<raydeon::shapes::AxisAlignedCuboid>> for AxisAlignedCuboid {
 #[pymethods]
 impl AxisAlignedCuboid {
     #[new]
-    #[pyo3(signature = (min, max, material=None))]
-    fn new(
-        min: &Bound<'_, PyAny>,
-        max: &Bound<'_, PyAny>,
-        material: Option<Material>,
-    ) -> PyResult<(Self, Geometry)> {
+    #[pyo3(signature = (min, max))]
+    fn new(min: &Bound<'_, PyAny>, max: &Bound<'_, PyAny>) -> PyResult<(Self, Geometry)> {
         let min: Vec3 = min.try_into()?;
         let max: Vec3 = max.try_into()?;
 
@@ -39,7 +34,6 @@ impl AxisAlignedCuboid {
             raydeon::shapes::AxisAlignedCuboid::new()
                 .min(min.cast_unit())
                 .max(max.cast_unit())
-                .material(material.map(|m| m.0).unwrap_or_default())
                 .build(),
         );
         let geom = Geometry::native(Arc::clone(&shape) as Arc<dyn raydeon::Shape>);
@@ -68,12 +62,11 @@ impl From<Arc<raydeon::shapes::Triangle>> for Tri {
 #[pymethods]
 impl Tri {
     #[new]
-    #[pyo3(signature = (p1, p2, p3, material=None))]
+    #[pyo3(signature = (p1, p2, p3))]
     fn new(
         p1: &Bound<'_, PyAny>,
         p2: &Bound<'_, PyAny>,
         p3: &Bound<'_, PyAny>,
-        material: Option<Material>,
     ) -> PyResult<(Self, Geometry)> {
         let p1: Point3 = p1.try_into()?;
         let p2: Point3 = p2.try_into()?;
@@ -84,7 +77,6 @@ impl Tri {
                 .v0(p1.cast_unit())
                 .v1(p2.cast_unit())
                 .v2(p3.cast_unit())
-                .material(material.map(|m| m.0).unwrap_or_default())
                 .build(),
         );
         let geom = Geometry::native(Arc::clone(&shape) as Arc<dyn raydeon::Shape>);
@@ -206,12 +198,11 @@ impl From<Arc<raydeon::shapes::Quad>> for Quad {
 #[pymethods]
 impl Quad {
     #[new]
-    #[pyo3(signature = (origin, basis, dims, material=None))]
+    #[pyo3(signature = (origin, basis, dims))]
     fn new(
         origin: &Bound<'_, PyAny>,
         basis: PyArrayLike2<'_, f64>,
         dims: PyArrayLike1<'_, f64>,
-        material: Option<Material>,
     ) -> PyResult<(Self, Geometry)> {
         let origin: Point3 = origin.try_into()?;
         let basis = basis
@@ -249,7 +240,6 @@ impl Quad {
                 .origin(origin.0.cast_unit())
                 .basis(basis)
                 .dims(dims)
-                .material(material.map(|m| m.0).unwrap_or_default())
                 .build(),
         );
         let geom = Geometry::native(Arc::clone(&shape) as Arc<dyn raydeon::Shape>);

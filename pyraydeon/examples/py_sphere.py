@@ -18,15 +18,8 @@ from pyraydeon import (
 
 
 class PySphere(Geometry):
-    def __init__(self, point, radius, material=None):
-        if material is not None:
-            self._material = material
-
+    def __init__(self, point, radius):
         self.sphere = Sphere(point, radius)
-
-    @property
-    def material(self):
-        return self._material
 
     def collision_geometry(self):
         return [self.sphere]
@@ -71,15 +64,8 @@ class PySphere(Geometry):
 
 
 class PyPlane(Geometry):
-    def __init__(self, point, normal, material=None):
-        if material is not None:
-            self._material = material
-
+    def __init__(self, point, normal):
         self.plane = Plane(point, normal)
-
-    @property
-    def material(self):
-        return self._material
 
     def collision_geometry(self):
         return [self.plane]
@@ -90,8 +76,14 @@ class PyPlane(Geometry):
 
 scene = Scene(
     geometry=[
-        PySphere(Point3(0, 0, 0), 1.0, Material(3.0, 3.0, 3)),
-        PyPlane(Point3(0, -2, 0), Vec3(0, 1, 0), Material(9000.0, 3.0, 3)),
+        PySphere(
+            Point3(0, 0, 0),
+            1.0,
+        ).with_material(Material(3.0, 3.0, 3)),
+        PyPlane(
+            Point3(0, -2, 0),
+            Vec3(0, 1, 0),
+        ).with_material(Material(9000.0, 3.0, 3)),
     ],
     lights=[PointLight((4, 3, 10), 3.6, 2.0, 0.15, 0.4, 0.11)],
     ambient_light=0.13,

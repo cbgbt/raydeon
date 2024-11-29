@@ -24,8 +24,8 @@ lighting.
 ```rust
 use raydeon::lights::PointLight;
 use raydeon::shapes::AxisAlignedCuboid;
-use raydeon::Material;
 use raydeon::{Camera, Scene, SceneLighting, WPoint3, WVec3};
+use raydeon::{DrawableShape, Material};
 use std::sync::Arc;
 
 fn main() {
@@ -33,29 +33,36 @@ fn main() {
         .format_timestamp_nanos()
         .init();
 
+    let cube_material = Material::new_mat(3.0, 2.0, 2.0, 0);
     let scene = Scene::new()
         .geometry(vec![
-            Arc::new(
-                AxisAlignedCuboid::new()
-                    .min((-1.0, -1.0, -1.0))
-                    .max((1.0, 1.0, 1.0))
-                    .material(Material::new(3.0, 2.0, 2.0, 0))
-                    .build(),
-            ),
-            Arc::new(
-                AxisAlignedCuboid::new()
-                    .min((1.8, -1.0, -1.0))
-                    .max((3.8, 1.0, 1.0))
-                    .material(Material::new(2.0, 2.0, 2.0, 0))
-                    .build(),
-            ),
-            Arc::new(
-                AxisAlignedCuboid::new()
-                    .min((-1.4, 1.8, -1.0))
-                    .max((0.6, 3.8, 1.0))
-                    .material(Material::new(3.0, 2.0, 2.0, 0))
-                    .build(),
-            ),
+            DrawableShape::new()
+                .geometry(Arc::new(
+                    AxisAlignedCuboid::new()
+                        .min((-1.0, -1.0, -1.0))
+                        .max((1.0, 1.0, 1.0))
+                        .build(),
+                ))
+                .material(cube_material)
+                .build(),
+            DrawableShape::new()
+                .geometry(Arc::new(
+                    AxisAlignedCuboid::new()
+                        .min((1.8, -1.0, -1.0))
+                        .max((3.8, 1.0, 1.0))
+                        .build(),
+                ))
+                .material(cube_material)
+                .build(),
+            DrawableShape::new()
+                .geometry(Arc::new(
+                    AxisAlignedCuboid::new()
+                        .min((-1.4, 1.8, -1.0))
+                        .max((0.6, 3.8, 1.0))
+                        .build(),
+                ))
+                .material(cube_material)
+                .build(),
         ])
         .lighting(
             SceneLighting::new()
@@ -86,10 +93,7 @@ fn main() {
         .perspective(Camera::perspective(fovy, width, height, znear, zfar))
         .build();
 
-    let render_result = scene
-        .attach_camera(camera)
-        .with_seed(0)
-        .render_with_lighting();
+    let render_result = scene.attach_camera(camera).render_with_lighting();
 
     let mut svg_doc = svg::Document::new()
         .set("width", "8in")
@@ -111,11 +115,7 @@ fn main() {
     let mut item_group = svg::node::element::Group::new()
         .set("transform", format!("translate(0, {}) scale(1,-1)", height));
 
-    for path in render_result
-        .geometry_paths
-        .iter()
-        .chain(render_result.hatch_paths.iter())
-    {
+    for path in render_result {
         let (p1, p2) = (path.p1, path.p2);
         item_group = item_group.add(
             svg::node::element::Line::new()

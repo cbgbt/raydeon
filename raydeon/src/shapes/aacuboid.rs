@@ -5,9 +5,7 @@ use euclid::Vector3D;
 use std::sync::Arc;
 
 use crate::path::LineSegment3D;
-use crate::{
-    Camera, CollisionGeometry, HitData, Material, Ray, Shape, WPoint3, WVec3, WorldSpace, AABB3,
-};
+use crate::{Camera, CollisionGeometry, HitData, Ray, Shape, WPoint3, WVec3, WorldSpace, AABB3};
 
 #[derive(Debug, Copy, Clone, Builder)]
 #[builder(start_fn(name = new))]
@@ -17,7 +15,6 @@ pub struct AxisAlignedCuboid {
     pub min: WVec3,
     #[builder(into)]
     pub max: WVec3,
-    pub material: Option<Material>,
 }
 
 impl From<AABB3<WorldSpace>> for AxisAlignedCuboid {
@@ -30,10 +27,6 @@ impl From<AABB3<WorldSpace>> for AxisAlignedCuboid {
 }
 
 impl Shape for AxisAlignedCuboid {
-    fn metadata(&self) -> Material {
-        self.material.unwrap_or_default()
-    }
-
     fn collision_geometry(&self) -> Option<Vec<Arc<dyn CollisionGeometry>>> {
         Some(vec![Arc::new(*self)])
     }
@@ -56,23 +49,20 @@ impl Shape for AxisAlignedCuboid {
         let p7 = WPoint3::new(x2, y2, z2);
         let p8 = WPoint3::new(x1, y2, z2);
 
-        LineSegment3D::from_points(
-            vec![
-                (p1, p2),
-                (p2, p3),
-                (p3, p4),
-                (p4, p1),
-                (p5, p6),
-                (p6, p7),
-                (p7, p8),
-                (p8, p5),
-                (p1, p5),
-                (p2, p6),
-                (p3, p7),
-                (p4, p8),
-            ],
-            self.material,
-        )
+        LineSegment3D::from_points(vec![
+            (p1, p2),
+            (p2, p3),
+            (p3, p4),
+            (p4, p1),
+            (p5, p6),
+            (p6, p7),
+            (p7, p8),
+            (p8, p5),
+            (p1, p5),
+            (p2, p6),
+            (p3, p7),
+            (p4, p8),
+        ])
     }
 }
 

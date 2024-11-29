@@ -5,6 +5,7 @@ use euclid::{Point2D, Vector2D};
 use path::{LineSegment2D, SlicedSegment3D};
 use rand::distributions::Distribution;
 use rand::SeedableRng;
+use ray::HitShape;
 use rayon::prelude::*;
 use std::sync::Arc;
 use tracing::info;
@@ -22,7 +23,7 @@ pub struct Scene {
 
 #[derive(Debug)]
 pub struct SceneGeometry {
-    geometry: Vec<Arc<dyn Shape>>,
+    geometry: Vec<DrawableShape>,
     bvh: BVHTree,
 }
 
@@ -31,26 +32,26 @@ impl SceneGeometry {
         Default::default()
     }
 
-    pub fn with_geometry(mut self, geometry: Vec<Arc<dyn Shape>>) -> Self {
+    pub fn with_geometry(mut self, geometry: Vec<DrawableShape>) -> Self {
         let bvh = Self::create_bvh(&geometry);
         self.geometry = geometry;
         self.bvh = bvh;
         self
     }
 
-    pub fn push_geometry(mut self, geometry: Arc<dyn Shape>) -> Self {
+    pub fn push_geometry(mut self, geometry: DrawableShape) -> Self {
         self.geometry.push(geometry);
         self.bvh = Self::create_bvh(&self.geometry);
         self
     }
 
-    pub fn concat_geometry(mut self, geometry: &[Arc<dyn Shape>]) -> Self {
+    pub fn concat_geometry(mut self, geometry: &[DrawableShape]) -> Self {
         self.geometry.extend_from_slice(geometry);
         self.bvh = Self::create_bvh(&self.geometry);
         self
     }
 
-    fn create_bvh(geometry: &[Arc<dyn Shape>]) -> BVHTree {
+    fn create_bvh(geometry: &[DrawableShape]) -> BVHTree {
         let collision_geometry: Vec<_> = geometry
             .iter()
             .filter_map(|s| {
@@ -82,14 +83,25 @@ impl<S: Shape + 'static> From<Vec<Arc<S>>> for SceneGeometry {
         SceneGeometry::new().with_geometry(
             geometry
                 .into_iter()
-                .map(|s| s as Arc<dyn Shape>)
+                .map(|s| DrawableShape::new().geometry(s as Arc<dyn Shape>).build())
                 .collect::<Vec<_>>(),
         )
     }
 }
 
 impl From<Vec<Arc<dyn Shape>>> for SceneGeometry {
-    fn from(geometry: Vec<Arc<dyn Shape>>) -> Self {
+    fn from(shapes: Vec<Arc<dyn Shape>>) -> Self {
+        SceneGeometry::new().with_geometry(
+            shapes
+                .into_iter()
+                .map(|shapes| DrawableShape::new().geometry(shapes).build())
+                .collect(),
+        )
+    }
+}
+
+impl From<Vec<DrawableShape>> for SceneGeometry {
+    fn from(geometry: Vec<DrawableShape>) -> Self {
         SceneGeometry::new().with_geometry(geometry)
     }
 }
@@ -148,7 +160,7 @@ impl Scene {
     }
 
     /// Find's the closest intersection point to geometry in the scene, if any
-    pub(crate) fn intersects(&self, ray: Ray) -> Option<(HitData, Arc<dyn Shape>)> {
+    pub(crate) fn intersects(&self, ray: Ray) -> Option<HitShape> {
         self.geometry.bvh.intersects(ray)
     }
 
@@ -158,8 +170,8 @@ impl Scene {
         let r = Ray::new(point, v.normalize());
 
         match self.intersects(r) {
-            Some((hitdata, _)) => {
-                let diff = (hitdata.dist_to - v.length()).abs();
+            Some(hit_shape) => {
+                let diff = (hit_shape.hit_data.dist_to - v.length()).abs();
                 diff < 1.0e-1
             }
             None => true,
@@ -174,8 +186,8 @@ pub struct SceneCamera<'s> {
     seed: Option<u64>,
 }
 
-impl<'a> SceneCamera<'a> {
-    pub fn new(camera: Camera, scene: &'a Scene) -> Self {
+impl<'s> SceneCamera<'s> {
+    pub fn new(camera: Camera, scene: &'s Scene) -> Self {
         SceneCamera {
             camera,
             scene,
@@ -183,9 +195,22 @@ impl<'a> SceneCamera<'a> {
         }
     }
 
-    pub fn with_seed(mut self, seed: u64) -> Self {
+    pub fn with_seed(mut self, seed: u64) -> SceneCamera<'s> {
         self.seed = Some(seed);
         self
+    }
+
+    fn geometry_paths(&self) -> Vec<LineSegment3D<'s, WorldSpace>> {
+        self.scene
+            .geometry
+            .geometry
+            .iter()
+            .flat_map(|shape| {
+                let mut paths = shape.paths(&self.camera);
+                paths.iter_mut().for_each(|path| path.set_shape(shape));
+                paths
+            })
+            .collect()
     }
 
     fn clip_filter(&self, path: &LineSegment3D<WorldSpace>) -> bool {
@@ -193,15 +218,9 @@ impl<'a> SceneCamera<'a> {
             .visible(self.camera.observation.eye, path.midpoint())
     }
 
-    pub fn render(&self) -> Vec<LineSegment2D<CameraSpace>> {
+    pub fn render(&self) -> Vec<DrawableSegment<'s>> {
         info!("Querying geometry for subpaths");
-        let parent_paths: Vec<LineSegment3D<WorldSpace>> = self
-            .scene
-            .geometry
-            .geometry
-            .iter()
-            .flat_map(|s| s.paths(&self.camera))
-            .collect();
+        let parent_paths = self.geometry_paths();
 
         info!(
             "Caching line segment chunks based on camera position, starting with {} segments",
@@ -210,11 +229,11 @@ impl<'a> SceneCamera<'a> {
 
         let mut paths: Vec<SlicedSegment3D<WorldSpace>> = parent_paths
             .iter()
-            .filter_map(|path| self.camera.chop_segment(path))
+            .filter_map(|segment| self.camera.chop_segment(segment))
             .collect();
 
         let path_count: usize = paths
-            .par_iter()
+            .iter()
             .map(|subsegments| subsegments.num_subsegments())
             .sum();
 
@@ -228,7 +247,7 @@ impl<'a> SceneCamera<'a> {
         let transformation: Transform3<WorldSpace, CameraSpace> =
             self.camera.camera_transformation();
 
-        let paths: Vec<_> = paths
+        let paths: Vec<LineSegment2D<CameraSpace>> = paths
             .par_iter_mut()
             .flat_map(|path_group| {
                 let to_remove: Vec<usize> = path_group
@@ -246,23 +265,23 @@ impl<'a> SceneCamera<'a> {
                     .for_each(|ndx| path_group.remove_subsegment(ndx));
                 path_group.join_slices()
             })
-            .filter_map(|path| path.transform(&transformation))
-            .map(LineSegment3D::xy)
+            .filter_map(|path| path.transform(&transformation).map(LineSegment3D::xy))
             .collect();
 
         info!("{} paths remain after clipping", paths.len());
 
         paths
+            .into_iter()
+            .map(|segment| {
+                DrawableSegment::new()
+                    .segment(segment)
+                    .kind(SegmentKind::Path)
+                    .build()
+            })
+            .collect()
     }
-}
 
-pub struct LitScene {
-    pub geometry_paths: Vec<LineSegment2D<CameraSpace>>,
-    pub hatch_paths: Vec<LineSegment2D<CameraSpace>>,
-}
-
-impl<'a> SceneCamera<'a> {
-    pub fn render_with_lighting(&self) -> LitScene {
+    pub fn render_with_lighting(&self) -> Vec<DrawableSegment<'s>> {
         let geometry_paths = self.render();
         let mut rng = match self.seed {
             Some(seed) => rand::rngs::StdRng::seed_from_u64(seed),
@@ -270,40 +289,53 @@ impl<'a> SceneCamera<'a> {
         };
 
         info!("Generating vertical hatch lines from lighting.");
-        let vert_lines = self.filter_hatch_lines_by(&self.vertical_hatch_lines(), |brightness| {
-            let threshold: f64 = rand::distributions::Standard.sample(&mut rng);
-            brightness > (threshold * self.camera.render_options.vert_hatch_brightness_scaling)
-        });
+        let vert_lines = self
+            .filter_hatch_lines_by(&self.vertical_hatch_lines(), |brightness| {
+                let threshold: f64 = rand::distributions::Standard.sample(&mut rng);
+                brightness > (threshold * self.camera.render_options.vert_hatch_brightness_scaling)
+            })
+            .into_iter()
+            .map(|vert_segment| {
+                DrawableSegment::new()
+                    .segment(vert_segment)
+                    .kind(SegmentKind::ScreenSpaceHatch(
+                        ScreenSpaceHatchKind::Vertical,
+                    ))
+                    .build() as DrawableSegment<'s>
+            })
+            .collect::<Vec<_>>();
+
         info!("Generated {} vertical hatch lines.", vert_lines.len());
 
         info!("Generating diagonal hatch lines from lighting.");
-        let diag_lines = self.filter_hatch_lines_by(&self.diagonal_hatch_lines(), |brightness| {
-            let threshold: f64 = rand::distributions::Standard.sample(&mut rng);
-            brightness > (threshold * self.camera.render_options.diag_hatch_brightness_scaling)
-        });
+        let diag_lines = self
+            .filter_hatch_lines_by(&self.diagonal_hatch_lines(), |brightness| {
+                let threshold: f64 = rand::distributions::Standard.sample(&mut rng);
+                brightness > (threshold * self.camera.render_options.diag_hatch_brightness_scaling)
+            })
+            .into_iter()
+            .map(|diag_segment| {
+                DrawableSegment::new()
+                    .segment(diag_segment)
+                    .kind(SegmentKind::ScreenSpaceHatch(
+                        ScreenSpaceHatchKind::Diagonal60,
+                    ))
+                    .build() as DrawableSegment<'s>
+            })
+            .collect::<Vec<_>>();
         info!("Generated {} diagonal hatch lines.", diag_lines.len());
 
-        let hatch_paths = [vert_lines, diag_lines].concat();
-
-        LitScene {
-            geometry_paths,
-            hatch_paths,
-        }
+        [geometry_paths, vert_lines, diag_lines].concat()
     }
 
     fn filter_hatch_lines_by(
         &self,
-        segments: &[LineSegment2D<CameraSpace>],
+        segments: &[LineSegment2D<'s, CameraSpace>],
         mut filter: impl FnMut(f64) -> bool,
-    ) -> Vec<LineSegment2D<CameraSpace>> {
+    ) -> Vec<LineSegment2D<'s, CameraSpace>> {
         let segments = segments
             .iter()
-            .map(|segment| {
-                LineSegment3D::new()
-                    .p1(segment.p1.to_3d())
-                    .p2(segment.p2.to_3d())
-                    .build()
-            })
+            .map(LineSegment2D::to_3d)
             .collect::<Vec<_>>();
         let mut split_segments = segments
             .iter()
@@ -336,15 +368,15 @@ impl<'a> SceneCamera<'a> {
                     self.camera.render_options.hatch_slice_forgiveness,
                 )
             })
-            .map(|path| LineSegment2D::new(path.p1().to_2d(), path.p2().to_2d()))
+            .map(LineSegment3D::xy)
             .collect::<Vec<_>>();
 
         paths
     }
 
     fn lighting_for_ray(&self, ray: Ray) -> Option<f64> {
-        let lighting = self.scene.intersects(ray).and_then(|(hitpoint, shape)| {
-            if hitpoint.dist_to > self.camera.perspective.zfar {
+        let lighting = self.scene.intersects(ray).and_then(|hit_shape| {
+            if hit_shape.hit_data.dist_to > self.camera.perspective.zfar {
                 return None;
             }
             Some(
@@ -352,7 +384,7 @@ impl<'a> SceneCamera<'a> {
                     .lighting
                     .lights
                     .iter()
-                    .map(|light| light.compute_illumination(self.scene, hitpoint, &shape))
+                    .map(|light| light.compute_illumination(self.scene, hit_shape))
                     .sum::<f64>()
                     + self.scene.lighting.ambient,
             )
@@ -362,7 +394,7 @@ impl<'a> SceneCamera<'a> {
     }
 
     // https://smashingpencilsart.com/how-do-you-hatch-with-a-pen/
-    fn vertical_hatch_lines(&self) -> Vec<LineSegment2D<CameraSpace>> {
+    fn vertical_hatch_lines(&self) -> Vec<LineSegment2D<'s, CameraSpace>> {
         let initial_offset = self.camera.render_options.hatch_pixel_spacing / 2.0;
 
         let mut segments = Vec::new();
@@ -372,13 +404,13 @@ impl<'a> SceneCamera<'a> {
         while x < self.camera.perspective.width as f64 {
             let start = Point2::new(x, 0.0);
             let end = Point2::new(x, self.camera.perspective.height as f64);
-            segments.push(LineSegment2D::new(start, end));
+            segments.push(LineSegment2D::new_segment(start, end));
             x += self.camera.render_options.hatch_pixel_spacing;
         }
         segments
     }
 
-    fn diagonal_hatch_lines(&self) -> Vec<LineSegment2D<CameraSpace>> {
+    fn diagonal_hatch_lines(&self) -> Vec<LineSegment2D<'s, CameraSpace>> {
         let initial_offset = self.camera.render_options.hatch_pixel_spacing / 2.0;
 
         let mut segments = Vec::new();
@@ -424,7 +456,7 @@ impl<'a> SceneCamera<'a> {
             let p1 = coll_aabb.intersection(&r1).unwrap();
             let p2 = coll_aabb.intersection(&r2).unwrap();
 
-            segments.push(LineSegment2D::new(
+            segments.push(LineSegment2D::new_segment(
                 Point2D::new(p1.x, p1.y),
                 Point2D::new(p2.x, p2.y),
             ));

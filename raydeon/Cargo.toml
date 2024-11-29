@@ -5,9 +5,11 @@ authors = ["cbgbt <cbgbt@cabbage.bot>"]
 edition = "2021"
 
 [dependencies]
+anyhow.workspace = true
 bon.workspace = true
 cgmath.workspace = true
 collision.workspace = true
+dot_vox.workspace = true
 euclid.workspace = true
 float-cmp.workspace = true
 log.workspace = true
@@ -16,6 +18,5 @@ rayon.workspace = true
 tracing = { workspace = true, features = ["log"] }
 
 [dev-dependencies]
-anyhow.workspace = true
 env_logger.workspace = true
 svg.workspace = true

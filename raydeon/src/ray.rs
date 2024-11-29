@@ -1,4 +1,4 @@
-use crate::{WPoint3, WVec3};
+use crate::{DrawableShape, WPoint3, WVec3};
 
 #[cfg(test)]
 use euclid::approxeq::ApproxEq as EuclidApproxEq;
@@ -35,6 +35,21 @@ pub struct HitData {
     /// The distance that a ray travelled to hit this shape.
     pub dist_to: f64,
     pub normal: WVec3,
+}
+
+#[derive(Debug, Clone, Copy)]
+pub struct HitShape<'s> {
+    pub hit_data: HitData,
+    pub hit_shape: &'s DrawableShape,
+}
+
+impl<'s> HitShape<'s> {
+    pub fn new(hit_data: HitData, hit_shape: &'s DrawableShape) -> HitShape<'s> {
+        HitShape {
+            hit_data,
+            hit_shape,
+        }
+    }
 }
 
 impl HitData {

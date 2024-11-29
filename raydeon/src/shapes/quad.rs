@@ -3,7 +3,7 @@ use std::sync::Arc;
 
 use super::Triangle;
 use crate::path::LineSegment3D;
-use crate::{Camera, CollisionGeometry, Material, Shape, WPoint3, WVec3, WorldSpace};
+use crate::{Camera, CollisionGeometry, Shape, WPoint3, WVec3, WorldSpace};
 
 #[derive(Debug, Copy, Clone, Builder)]
 #[builder(start_fn(name = new))]
@@ -18,7 +18,6 @@ pub struct Quad {
     })]
     pub basis: [WVec3; 2],
     pub dims: [f64; 2],
-    material: Option<Material>,
 
     #[builder(skip = [
             origin,
@@ -30,10 +29,6 @@ pub struct Quad {
 }
 
 impl Shape for Quad {
-    fn metadata(&self) -> Material {
-        self.material.unwrap_or_default()
-    }
-
     fn collision_geometry(&self) -> Option<Vec<std::sync::Arc<dyn CollisionGeometry>>> {
         Some(vec![
             Arc::new(
@@ -67,9 +62,6 @@ impl Shape for Quad {
             .map(|v| v + (v.to_vector() - centroid).normalize() * 0.0015)
             .collect::<Vec<_>>();
 
-        LineSegment3D::from_points(
-            vec![(v[0], v[1]), (v[1], v[2]), (v[2], v[3]), (v[3], v[0])],
-            self.material,
-        )
+        LineSegment3D::from_points(vec![(v[0], v[1]), (v[1], v[2]), (v[2], v[3]), (v[3], v[0])])
     }
 }

@@ -1,4 +1,5 @@
-use crate::{CollisionGeometry, HitData, Ray, Shape, WorldSpace, AABB3};
+use crate::ray::HitShape;
+use crate::{CollisionGeometry, DrawableShape, Ray, WorldSpace, AABB3};
 use euclid::Point3D;
 use rayon::prelude::*;
 use std::sync::Arc;
@@ -6,12 +7,12 @@ use tracing::info;
 
 #[derive(Debug, Clone)]
 pub(crate) struct Collidable {
-    shape: Arc<dyn Shape>,
+    shape: DrawableShape,
     collision: Arc<dyn CollisionGeometry>,
 }
 
 impl Collidable {
-    pub(crate) fn new(shape: Arc<dyn Shape>, collision: Arc<dyn CollisionGeometry>) -> Self {
+    pub(crate) fn new(shape: DrawableShape, collision: Arc<dyn CollisionGeometry>) -> Self {
         Self { shape, collision }
     }
 }
@@ -64,17 +65,22 @@ impl BVHTree {
 }
 
 impl BVHTree {
-    pub(crate) fn intersects(&self, ray: Ray) -> Option<(HitData, Arc<dyn Shape>)> {
+    pub(crate) fn intersects(&self, ray: Ray) -> Option<HitShape> {
         vec![
             self.intersects_bounded_volume(ray),
             self.intersects_unbounded_volume(ray),
         ]
         .into_iter()
         .flatten()
-        .min_by(|(hit1, _), (hit2, _)| hit1.dist_to.partial_cmp(&hit2.dist_to).unwrap())
+        .min_by(|hit1, hit2| {
+            hit1.hit_data
+                .dist_to
+                .partial_cmp(&hit2.hit_data.dist_to)
+                .unwrap()
+        })
     }
 
-    fn intersects_bounded_volume(&self, ray: Ray) -> Option<(HitData, Arc<dyn Shape>)> {
+    fn intersects_bounded_volume(&self, ray: Ray) -> Option<HitShape> {
         let (tmin, tmax) = bounding_box_intersects(self.aabb, ray);
         if tmax < tmin || tmax <= 0.0 {
             None
@@ -85,16 +91,21 @@ impl BVHTree {
         }
     }
 
-    fn intersects_unbounded_volume(&self, ray: Ray) -> Option<(HitData, Arc<dyn Shape>)> {
+    fn intersects_unbounded_volume(&self, ray: Ray) -> Option<HitShape> {
         self.unbounded
             .iter()
             .filter_map(|collidable| {
                 collidable
                     .collision
                     .hit_by(&ray)
-                    .map(|hit_point| (hit_point, collidable.shape.clone()))
+                    .map(|hit_point| HitShape::new(hit_point, &collidable.shape))
             })
-            .min_by(|(hit1, _), (hit2, _)| hit1.dist_to.partial_cmp(&hit2.dist_to).unwrap())
+            .min_by(|hit1, hit2| {
+                hit1.hit_data
+                    .dist_to
+                    .partial_cmp(&hit2.hit_data.dist_to)
+                    .unwrap()
+            })
     }
 }
 
@@ -113,7 +124,7 @@ struct ParentNode {
 }
 
 impl ParentNode {
-    fn intersects(&self, ray: Ray, tmin: f64, tmax: f64) -> Option<(HitData, Arc<dyn Shape>)> {
+    fn intersects(&self, ray: Ray, tmin: f64, tmax: f64) -> Option<HitShape> {
         let rp: f64;
         let rd: f64;
         match self.axis {
@@ -145,14 +156,23 @@ impl ParentNode {
         } else {
             let h1 = first.intersects(ray, tmin, tsplit);
 
-            if h1.as_ref().is_some_and(|(hit, _)| hit.dist_to <= tsplit) {
+            if h1
+                .as_ref()
+                .is_some_and(|hit| hit.hit_data.dist_to <= tsplit)
+            {
                 return h1;
             }
 
-            let h1t = h1.as_ref().map(|(hit, _)| hit.dist_to).unwrap_or(f64::MAX);
+            let h1t = h1
+                .as_ref()
+                .map(|hit| hit.hit_data.dist_to)
+                .unwrap_or(f64::MAX);
 
             let h2 = second.intersects(ray, tsplit, f64::min(tmax, h1t));
-            let h2t = h2.as_ref().map(|(hit, _)| hit.dist_to).unwrap_or(f64::MAX);
+            let h2t = h2
+                .as_ref()
+                .map(|hit| hit.hit_data.dist_to)
+                .unwrap_or(f64::MAX);
 
             if h1t < h2t {
                 h1
@@ -207,7 +227,7 @@ impl LeafNode {
 }
 
 impl LeafNode {
-    fn intersects(&self, ray: Ray) -> Option<(HitData, Arc<dyn Shape>)> {
+    fn intersects(&self, ray: Ray) -> Option<HitShape> {
         self.shapes
             .iter()
             .filter_map(|shape| {
@@ -215,9 +235,14 @@ impl LeafNode {
                     .collidable
                     .collision
                     .hit_by(&ray)
-                    .map(|hitpoint| (hitpoint, shape.collidable.shape.clone()))
+                    .map(|hitpoint| HitShape::new(hitpoint, &shape.collidable.shape))
             })
-            .min_by(|(hit1, _), (hit2, _)| hit1.dist_to.partial_cmp(&hit2.dist_to).unwrap())
+            .min_by(|hit1, hit2| {
+                hit1.hit_data
+                    .dist_to
+                    .partial_cmp(&hit2.hit_data.dist_to)
+                    .unwrap()
+            })
     }
 }
 
@@ -296,7 +321,7 @@ impl Node {
 }
 
 impl Node {
-    fn intersects(&self, ray: Ray, tmin: f64, tmax: f64) -> Option<(HitData, Arc<dyn Shape>)> {
+    fn intersects(&self, ray: Ray, tmin: f64, tmax: f64) -> Option<HitShape> {
         match self {
             Self::Parent(parent_node) => parent_node.intersects(ray, tmin, tmax),
             Self::Leaf(leaf_node) => leaf_node.intersects(ray),

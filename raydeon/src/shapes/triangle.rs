@@ -4,7 +4,7 @@ use std::sync::Arc;
 
 use super::plane::Plane;
 use crate::path::LineSegment3D;
-use crate::{Camera, CollisionGeometry, HitData, Material, Ray, Shape, WPoint3, WVec3, WorldSpace};
+use crate::{Camera, CollisionGeometry, HitData, Ray, Shape, WPoint3, WVec3, WorldSpace};
 
 #[derive(Debug, Copy, Clone, Builder)]
 #[builder(start_fn(name = new))]
@@ -29,15 +29,9 @@ pub struct Triangle {
         .build()
     )]
     pub plane: Plane,
-
-    pub material: Option<Material>,
 }
 
 impl Shape for Triangle {
-    fn metadata(&self) -> Material {
-        self.material.unwrap_or_default()
-    }
-
     fn collision_geometry(&self) -> Option<Vec<std::sync::Arc<dyn CollisionGeometry>>> {
         Some(vec![Arc::new(*self)])
     }
@@ -52,7 +46,7 @@ impl Shape for Triangle {
         let v1 = v1 + (v1 - centroid).normalize() * 0.015;
         let v2 = v2 + (v2 - centroid).normalize() * 0.015;
 
-        LineSegment3D::from_points(vec![(v0, v1), (v1, v2), (v2, v0)], self.material)
+        LineSegment3D::from_points(vec![(v0, v1), (v1, v2), (v2, v0)])
     }
 }
 

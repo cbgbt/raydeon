@@ -1,10 +1,9 @@
-use material::Material;
+use ray::HitShape;
 
 use crate::*;
 
 pub trait Light: std::fmt::Debug + Send + Sync + 'static {
-    fn compute_illumination(&self, scene: &Scene, hitpoint: HitData, shape: &Arc<dyn Shape>)
-        -> f64;
+    fn compute_illumination<'s>(&self, scene: &'s Scene, hit_shape: HitShape<'s>) -> f64;
 }
 
 #[derive(Debug, Copy, Clone, Default)]
@@ -19,26 +18,20 @@ pub struct PointLight {
 }
 
 impl Light for PointLight {
-    fn compute_illumination(
-        &self,
-        scene: &Scene,
-        hitpoint: HitData,
-        shape: &Arc<dyn Shape>,
-    ) -> f64 {
-        let _light_hitpoint = match self.light_hitpoint_for_hit(scene, hitpoint, shape) {
+    fn compute_illumination<'s>(&self, scene: &'s Scene, hit_shape: HitShape<'s>) -> f64 {
+        let _light_hitpoint = match self.light_hitpoint_for_hit(scene, hit_shape) {
             Some(hit) => hit,
             None => return 0.0,
         };
 
         let mut illum = 0.0;
-        let material = shape.metadata();
 
-        illum += self.diffuse_illumination(hitpoint, &material);
-        let specular = self.specular_illumination(hitpoint, &material);
+        illum += self.diffuse_illumination(hit_shape);
+        let specular = self.specular_illumination(hit_shape);
         tracing::debug!("specular: {}", specular);
         illum += specular;
 
-        let atten = self.attenuation(hitpoint);
+        let atten = self.attenuation(hit_shape);
         tracing::debug!("pre-attenuated illum: {}", illum);
         tracing::debug!("atten: {}", atten);
         let illum = illum * atten;
@@ -92,13 +85,17 @@ impl PointLight {
         self.quadratic_attenuation
     }
 
-    fn diffuse_illumination(&self, hitpoint: HitData, material: &Material) -> f64 {
+    fn diffuse_illumination(&self, hit_shape: HitShape) -> f64 {
+        let hitpoint = &hit_shape.hit_data;
+        let material = hit_shape.hit_shape.material().unwrap_or_default();
         let to_light = (self.position - hitpoint.hit_point).normalize();
         let diffuse_scale = to_light.dot(hitpoint.normal).max(0.0);
         material.diffuse * self.intensity * diffuse_scale
     }
 
-    fn specular_illumination(&self, hitpoint: HitData, material: &Material) -> f64 {
+    fn specular_illumination(&self, hit_shape: HitShape) -> f64 {
+        let hitpoint = hit_shape.hit_data;
+        let material = hit_shape.hit_shape.material().unwrap_or_default();
         let to_light = (self.position - hitpoint.hit_point).normalize();
 
         let v = hitpoint.hit_point.to_vector() * -1.0;
@@ -111,20 +108,20 @@ impl PointLight {
         ps * blinn_phong
     }
 
-    fn attenuation(&self, hitpoint: HitData) -> f64 {
-        let distance = (self.position - hitpoint.hit_point).length();
+    fn attenuation(&self, hitpoint: HitShape) -> f64 {
+        let distance = (self.position - hitpoint.hit_data.hit_point).length();
         let attenuation = self.constant_attenuation
             + self.linear_attenuation * distance
             + self.quadratic_attenuation * distance * distance;
         1.0 / attenuation
     }
 
-    fn light_hitpoint_for_hit(
+    fn light_hitpoint_for_hit<'s>(
         &self,
-        scene: &Scene,
-        hitpoint: HitData,
-        shape: &Arc<dyn Shape>,
-    ) -> Option<HitData> {
+        scene: &'s Scene,
+        hit_shape: HitShape<'s>,
+    ) -> Option<HitShape<'s>> {
+        let hitpoint = hit_shape.hit_data;
         let to_light = (self.position - hitpoint.hit_point).normalize();
         if to_light.dot(hitpoint.normal) < 0.0 {
             return None;
@@ -132,10 +129,12 @@ impl PointLight {
 
         let to_hitpoint = (hitpoint.hit_point - self.position).normalize();
         let light_ray = Ray::new(self.position, to_hitpoint);
-        scene
-            .intersects(light_ray)
-            .and_then(|(light_hitpoint, light_shape)| {
-                Arc::ptr_eq(&light_shape, shape).then_some(light_hitpoint)
-            })
+        scene.intersects(light_ray).and_then(|light_hitpoint| {
+            Arc::ptr_eq(
+                &light_hitpoint.hit_shape.geometry,
+                &hit_shape.hit_shape.geometry,
+            )
+            .then_some(light_hitpoint)
+        })
     }
 }

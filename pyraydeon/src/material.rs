@@ -7,7 +7,13 @@ impl Material {
     #[new]
     #[pyo3(signature = (diffuse=0.0, specular=0.0, shininess=0.0, tag=0))]
     fn new(diffuse: f64, specular: f64, shininess: f64, tag: usize) -> PyResult<Self> {
-        Ok(raydeon::material::Material::new(diffuse, specular, shininess, tag).into())
+        Ok(raydeon::material::Material::new()
+            .diffuse(diffuse)
+            .specular(specular)
+            .shininess(shininess)
+            .tag(tag)
+            .build()
+            .into())
     }
 
     #[getter]

@@ -1,3 +1,5 @@
+use bon::Builder;
+
 #[allow(clippy::needless_doctest_main)]
 #[doc = include_str!("../../README.md")]
 pub(crate) mod bvh;
@@ -9,6 +11,8 @@ pub mod ray;
 pub mod scene;
 pub mod shapes;
 
+use std::fmt::Debug;
+use std::ops::Deref;
 use std::sync::Arc;
 
 pub use camera::{Camera, CameraOptions};
@@ -49,11 +53,57 @@ pub type CCTransform = Transform3<CameraSpace, CameraSpace>;
 
 pub trait Shape: Send + Sync + std::fmt::Debug {
     fn collision_geometry(&self) -> Option<Vec<Arc<dyn CollisionGeometry>>>;
-    fn metadata(&self) -> Material;
     fn paths(&self, cam: &Camera) -> Vec<LineSegment3D<WorldSpace>>;
 }
 
 pub trait CollisionGeometry: Send + Sync + std::fmt::Debug {
     fn hit_by(&self, ray: &Ray) -> Option<HitData>;
     fn bounding_box(&self) -> Option<AABB3<WorldSpace>>;
+}
+
+#[derive(Debug, Clone, Builder)]
+#[builder(start_fn(name = new))]
+pub struct DrawableShape {
+    geometry: Arc<dyn Shape>,
+    material: Option<Material>,
+}
+
+impl DrawableShape {
+    pub fn collision_geometry(&self) -> Option<Vec<Arc<dyn CollisionGeometry>>> {
+        self.geometry.collision_geometry()
+    }
+
+    pub fn paths(&self, cam: &Camera) -> Vec<LineSegment3D<WorldSpace>> {
+        self.geometry.paths(cam)
+    }
+
+    pub fn material(&self) -> Option<Material> {
+        self.material
+    }
+}
+
+#[derive(Debug, Clone, Builder)]
+#[builder(start_fn(name = new))]
+pub struct DrawableSegment<'s> {
+    pub segment: crate::path::LineSegment2D<'s, CameraSpace>,
+    pub kind: SegmentKind,
+}
+
+impl<'s> Deref for DrawableSegment<'s> {
+    type Target = crate::path::LineSegment2D<'s, CameraSpace>;
+
+    fn deref(&self) -> &Self::Target {
+        &self.segment
+    }
+}
+
+#[derive(Debug, Copy, Clone)]
+pub enum SegmentKind {
+    ScreenSpaceHatch(ScreenSpaceHatchKind),
+    Path,
+}
+#[derive(Debug, Copy, Clone)]
+pub enum ScreenSpaceHatchKind {
+    Vertical,
+    Diagonal60,
 }
