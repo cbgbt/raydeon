@@ -4,7 +4,7 @@ use pyo3::prelude::*;
 use crate::linear::{Point3, Vec3};
 
 #[derive(Debug, Clone)]
-#[pyclass(frozen)]
+#[pyclass]
 pub(crate) struct Camera(pub(crate) raydeon::Camera);
 
 impl ::std::ops::Deref for Camera {
@@ -55,19 +55,45 @@ impl Camera {
         ncam.into()
     }
 
-    #[getter]
-    fn eye<'py>(&self, py: Python<'py>) -> Bound<'py, PyArray<f64, Ix1>> {
-        PyArray::from_slice_bound(py, &self.0.observation.eye.to_array())
+    fn translate(&mut self, trans: &Bound<'_, PyAny>) -> PyResult<()> {
+        let trans = Vec3::try_from(trans)?;
+        self.0.translate(trans.0.cast_unit());
+        Ok(())
+    }
+
+    fn adjust_yaw(&mut self, yaw: f64) -> PyResult<()> {
+        self.0.adjust_yaw(euclid::Angle::degrees(yaw));
+        Ok(())
+    }
+
+    fn adjust_pitch(&mut self, pitch: f64) -> PyResult<()> {
+        self.0.adjust_pitch(euclid::Angle::degrees(pitch));
+        Ok(())
+    }
+
+    fn adjust_roll(&mut self, roll: f64) -> PyResult<()> {
+        self.0.adjust_roll(euclid::Angle::degrees(roll));
+        Ok(())
     }
 
     #[getter]
-    fn focus<'py>(&self, py: Python<'py>) -> Bound<'py, PyArray<f64, Ix1>> {
-        PyArray::from_slice_bound(py, &self.0.observation.center.to_array())
+    fn eye<'py>(&self, py: Python<'py>) -> Bound<'py, PyArray<f64, Ix1>> {
+        PyArray::from_slice_bound(py, &self.0.observation.eye().to_array())
     }
 
     #[getter]
     fn up<'py>(&self, py: Python<'py>) -> Bound<'py, PyArray<f64, Ix1>> {
-        PyArray::from_slice_bound(py, &self.0.observation.up.to_array())
+        PyArray::from_slice_bound(py, &self.0.observation.up().to_array())
+    }
+
+    #[getter]
+    fn right<'py>(&self, py: Python<'py>) -> Bound<'py, PyArray<f64, Ix1>> {
+        PyArray::from_slice_bound(py, &self.0.observation.right().to_array())
+    }
+
+    #[getter]
+    fn look<'py>(&self, py: Python<'py>) -> Bound<'py, PyArray<f64, Ix1>> {
+        PyArray::from_slice_bound(py, &self.0.observation.look().to_array())
     }
 
     #[getter]
@@ -102,7 +128,7 @@ impl Camera {
 
     fn __repr__(slf: &Bound<'_, Self>) -> PyResult<String> {
         let class_name = slf.get_type().qualname()?;
-        Ok(format!("{}<{:?}>", class_name, slf.borrow().0))
+        Ok(format!("{}<{:#?}>", class_name, slf.borrow().0))
     }
 }
 

@@ -9,6 +9,7 @@ name = "pyraydeon"
 crate-type = ["cdylib"]
 
 [dependencies]
+euclid.workspace = true
 pyo3 = { workspace = true, features = ["extension-module"] }
 raydeon.workspace = true
 numpy.workspace = true

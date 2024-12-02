@@ -90,8 +90,8 @@ scene = Scene(
 )
 
 
-eye = Point3(0, 0, 5)
-focus = Vec3(0, 0, 0)
+eye = Point3(0, 0, 0)
+focus = Point3(0, 0, -1)
 up = Vec3(0, 1, 0)
 
 fovy = 50.0
@@ -110,6 +110,7 @@ cam = (
     .perspective(fovy, width, height, znear, zfar)
     .render_options(render_opts)
 )
+cam.translate((0, 0, 5))
 
 paths = scene.render_with_lighting(cam, seed=5)
 

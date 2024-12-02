@@ -1,7 +1,7 @@
 use bon::Builder;
 use bvh::{BVHTree, Collidable};
 use collision::Continuous;
-use euclid::{Point2D, Vector2D};
+use euclid::{Point2D, Vector2D, Vector3D};
 use path::{LineSegment2D, SlicedSegment3D};
 use rand::distributions::Distribution;
 use rand::SeedableRng;
@@ -200,6 +200,22 @@ impl<'s> SceneCamera<'s> {
         self
     }
 
+    pub fn adjust_yaw(&mut self, yaw: euclid::Angle<f64>) {
+        self.camera.adjust_yaw(yaw);
+    }
+
+    pub fn adjust_pitch(&mut self, pitch: euclid::Angle<f64>) {
+        self.camera.adjust_pitch(pitch);
+    }
+
+    pub fn adjust_roll(&mut self, roll: euclid::Angle<f64>) {
+        self.camera.adjust_roll(roll);
+    }
+
+    pub fn translate(&mut self, trans: impl Into<Vector3D<f64, ()>>) {
+        self.camera.translate(trans);
+    }
+
     fn geometry_paths(&self) -> Vec<LineSegment3D<'s, WorldSpace>> {
         self.scene
             .geometry
@@ -215,7 +231,7 @@ impl<'s> SceneCamera<'s> {
 
     fn clip_filter(&self, path: &LineSegment3D<WorldSpace>) -> bool {
         self.scene
-            .visible(self.camera.observation.eye, path.midpoint())
+            .visible(self.camera.observation.eye(), path.midpoint())
     }
 
     pub fn render(&self) -> Vec<DrawableSegment<'s>> {
@@ -254,7 +270,7 @@ impl<'s> SceneCamera<'s> {
                     .subsegments()
                     .enumerate()
                     .filter_map(|(ndx, path)| {
-                        let from_cam = path.midpoint() - self.camera.observation.eye;
+                        let from_cam = path.midpoint() - self.camera.observation.eye();
                         let close_enough = from_cam.length() < self.camera.perspective.zfar;
                         let visible = close_enough && self.clip_filter(&path);
                         (!visible).then_some(ndx)

@@ -1,5 +1,5 @@
 use bon::Builder;
-use euclid::{Point3D, Transform3D};
+use euclid::{Point3D, Transform3D, Vector3D};
 use path::SlicedSegment3D;
 
 use self::view_matrix_settings::*;
@@ -45,6 +45,22 @@ impl Default for CameraOptions {
 }
 
 impl Camera {
+    pub fn adjust_yaw(&mut self, yaw: euclid::Angle<f64>) {
+        self.observation.adjust_yaw(yaw);
+    }
+
+    pub fn adjust_pitch(&mut self, pitch: euclid::Angle<f64>) {
+        self.observation.adjust_pitch(pitch);
+    }
+
+    pub fn adjust_roll(&mut self, roll: euclid::Angle<f64>) {
+        self.observation.adjust_roll(roll);
+    }
+
+    pub fn translate(&mut self, trans: impl Into<Vector3D<f64, ()>>) {
+        self.observation.translate(trans);
+    }
+
     #[must_use]
     pub fn canvas_transformation(&self) -> Transform3D<f64, WorldSpace, CanvasSpace> {
         let p = &self.perspective;
@@ -52,7 +68,7 @@ impl Camera {
         let xmax = ymax * p.aspect;
 
         let frustum = frustum(-xmax, xmax, -ymax, ymax, p.znear, p.zfar);
-        self.observation.look_matrix().then(&frustum)
+        self.observation.world_to_camera_transform().then(&frustum)
     }
 
     #[must_use]
@@ -114,8 +130,8 @@ impl Camera {
             .unwrap();
 
         Ray {
-            point: self.observation.eye,
-            dir: (world_coord.to_vector() - self.observation.eye.to_vector()).normalize(),
+            point: self.observation.eye(),
+            dir: (world_coord.to_vector() - self.observation.eye().to_vector()).normalize(),
         }
     }
 
@@ -141,11 +157,7 @@ impl Camera {
         center: impl Into<WVec3>,
         up: impl Into<WVec3>,
     ) -> Observation {
-        let eye = eye.into();
-        let center = center.into();
-        let up = up.into().normalize();
-
-        Observation { eye, center, up }
+        Observation::look_at(eye, center, up)
     }
 
     pub fn perspective(
@@ -172,9 +184,7 @@ mod view_matrix_settings {
 
     #[derive(Debug, Copy, Clone)]
     pub struct Observation {
-        pub eye: WPoint3,
-        pub center: WVec3,
-        pub up: WVec3,
+        view_mat: CWTransform,
     }
 
     impl Default for Observation {
@@ -189,34 +199,81 @@ mod view_matrix_settings {
             center: impl Into<WVec3>,
             up: impl Into<WVec3>,
         ) -> Self {
+            let view_mat = Self::create_view_matrix(eye, center, up);
+            Self { view_mat }
+        }
+
+        pub fn eye(&self) -> WPoint3 {
+            (self.view_mat.m41, self.view_mat.m42, self.view_mat.m43).into()
+        }
+
+        pub fn right(&self) -> WVec3 {
+            (self.view_mat.m11, self.view_mat.m12, self.view_mat.m13).into()
+        }
+
+        pub fn up(&self) -> WVec3 {
+            (self.view_mat.m21, self.view_mat.m22, self.view_mat.m23).into()
+        }
+
+        pub fn look(&self) -> WVec3 {
+            (-self.view_mat.m31, -self.view_mat.m32, -self.view_mat.m33).into()
+        }
+
+        fn rotate_around_axis(&mut self, axis: impl Into<WVec3>, angle: euclid::Angle<f64>) {
+            let axis = axis.into();
+            self.view_mat = self
+                .view_mat
+                .pre_rotate(axis.x, axis.y, axis.z, angle)
+                .with_destination();
+        }
+
+        pub fn adjust_yaw(&mut self, yaw: euclid::Angle<f64>) {
+            self.rotate_around_axis((0.0, 1.0, 0.0), yaw);
+        }
+
+        pub fn adjust_pitch(&mut self, pitch: euclid::Angle<f64>) {
+            self.rotate_around_axis((1.0, 0.0, 0.0), pitch);
+        }
+
+        pub fn adjust_roll(&mut self, roll: euclid::Angle<f64>) {
+            self.rotate_around_axis((0.0, 0.0, 1.0), roll);
+        }
+
+        pub fn translate<T>(&mut self, trans: impl Into<Vector3D<f64, T>>) {
+            // input is a camera translation, but we're describing a
+            // world translation, so we negate
+            let trans = trans.into();
+            self.view_mat = self
+                .view_mat
+                .pre_translate(trans.cast_unit())
+                .with_destination();
+        }
+
+        #[rustfmt::skip]
+        fn create_view_matrix(
+            eye: impl Into<WPoint3>,
+            center: impl Into<WVec3>,
+            up: impl Into<WVec3>,
+        ) -> Transform3D<f64, CameraSpace, WorldSpace> {
             let eye = eye.into();
             let center = center.into();
             let up = up.into().normalize();
 
-            Self { eye, center, up }
+            let f = (center - eye.to_vector()).normalize();
+            let s = f.cross(up).normalize();
+            let u = s.cross(f).normalize();
+
+            CWTransform::new(
+                s.x, s.y, s.z, 0.0,
+                u.x, u.y, u.z, 0.0,
+                -f.x, -f.y, -f.z, 0.0,
+                eye.x, eye.y, eye.z, 1.0
+            )
         }
 
-    #[rustfmt::skip]
-        pub fn look_matrix(&self) -> WCTransform {
-        let Observation { eye, center, up, .. } = *self;
-        let f = (center - eye.to_vector()).normalize();
-        let s = f.cross(up).normalize();
-        let u = s.cross(f).normalize();
-
-        CWTransform::from_array(
-            // euclid used to let us specify things in column major order and now it doesn't.
-            // So we're just transposing it here.
-            CWTransform::new(
-                s.x, u.x, -f.x, eye.x,
-                s.y, u.y, -f.y, eye.y,
-                s.z, u.z, -f.z, eye.z,
-                0.0, 0.0, 0.0,  1.0,
-            )
-            .to_array_transposed(),
-        )
-        .inverse()
-        .unwrap()
-    }
+        pub(super) fn world_to_camera_transform(&self) -> WCTransform {
+            self.view_mat.inverse().unwrap()
+        }
     }
 
     #[derive(Debug, Copy, Clone)]

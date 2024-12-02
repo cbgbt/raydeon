@@ -11,7 +11,7 @@ steal his words (because this port isn't theft enough):
 This repository has added support for screen-space hatching based on lights
 placed within the scene.
 
-![](/raydeon/examples/cityscape.png)
+![](/raydeon/examples/cityscape.png) ![](/raydeon/examples/castle_expected.svg)
 
 ## Example
 
