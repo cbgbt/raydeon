@@ -63,7 +63,7 @@ impl Scene {
             } else {
                 cam
             };
-            let render_result = cam.render_with_lighting();
+            let render_result = cam.render_with_screen_hatching();
             render_result.strokes().iter().map(Into::into).collect()
         })
     }

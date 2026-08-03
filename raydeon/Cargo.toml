@@ -12,7 +12,7 @@ dot_vox.workspace = true
 euclid.workspace = true
 float-cmp.workspace = true
 log.workspace = true
-rand = { workspace = true, features = ["std_rng"] }
+nutype.workspace = true
 rayon.workspace = true
 snafu.workspace = true
 tracing = { workspace = true, features = ["log"] }

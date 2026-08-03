@@ -1,74 +1,46 @@
 //! The architectural test scene every hatching strategy renders.
 //!
 //! A gabled house with door and window openings, a chimney, a sphere-canopy
-//! tree, and a ground plane, lit by a single point light. Alongside the
-//! raydeon [`Scene`] this keeps per-face metadata (plane basis, outline
-//! polygon, holes) that world-space hatching strategies need.
-use crate::shapes::{BallShape, Decal};
+//! tree, and a ground plane, lit by a single point light. The whole scene is
+//! ordinary raydeon geometry: a strategy is nothing but the hatch style its
+//! material carries.
 use raydeon::lights::PointLight;
 use raydeon::shapes::{Quad, Sphere, Triangle};
-use raydeon::{Camera, DrawableShape, Material, Scene, SceneLighting, Shape, WPoint3, WVec3};
+use raydeon::{
+    Camera, CollisionGeometry, DrawableShape, FaceBox, FacePoint, HatchStyle, HatchSurface,
+    LineSegment3D, Material, PlanarSurface, Scene, SceneLighting, Shape, ToneWhite, WPoint3, WVec3,
+    WorldSpace,
+};
 use std::sync::Arc;
 
-/// 2D coordinates within a face's plane, in units of the face basis vectors.
-#[derive(Debug, Copy, Clone)]
-pub struct FaceSpace;
-
-pub type FacePoint = euclid::Point2D<f64, FaceSpace>;
-pub type FaceBox = euclid::Box2D<f64, FaceSpace>;
-
-/// Illumination value at which a surface reads as fully white.
-pub const TONE_WHITE: f64 = 1.3;
+/// The illumination this scene's light delivers to a fully lit surface.
+/// Hatching normalizes tone against it, so it is tuned to the light below.
+const TONE_WHITE: f64 = 1.3;
 
 pub const RENDER_WIDTH: usize = 1024;
 pub const RENDER_HEIGHT: usize = 768;
 
-/// A planar convex region of scene geometry that can carry hatch lines.
-#[derive(Debug, Clone)]
-pub struct Face {
-    /// Shares its geometry `Arc` with the shape registered in the scene, so
-    /// illumination shadow tests recognize hits on this face as unoccluded.
-    pub drawable: DrawableShape,
-    pub origin: WPoint3,
-    /// Unit in-plane basis; `basis[0] x basis[1]` equals the outward normal.
-    pub basis: [WVec3; 2],
-    pub normal: WVec3,
-    /// Convex outline in face coordinates, counter-clockwise.
-    pub outline: Vec<FacePoint>,
-    /// Openings (door, windows) that hatch lines must skip.
-    pub holes: Vec<FaceBox>,
-}
-
-impl Face {
-    pub fn to_world(&self, p: FacePoint) -> WPoint3 {
-        self.origin + self.basis[0] * p.x + self.basis[1] * p.y
-    }
-}
-
-/// A sphere in the scene, hatched with contour rings rather than plane lines.
-#[derive(Debug, Clone)]
-pub struct Ball {
-    pub drawable: DrawableShape,
-    pub center: WPoint3,
-    pub radius: f64,
+/// Where the scene's only light sits. Light-flow hatching needs to know, so
+/// its strokes can follow the light across each surface.
+pub fn light_position() -> WPoint3 {
+    WPoint3::new(-9.0, -13.0, 13.0)
 }
 
 pub struct TestScene {
     pub scene: Scene,
-    pub faces: Vec<Face>,
-    pub balls: Vec<Ball>,
     pub camera: Camera,
-    pub light_position: WPoint3,
 }
 
-pub fn build() -> TestScene {
-    let mut assembler = Assembler::new(
-        Material::new()
-            .diffuse(1.0)
-            .specular(0.35)
-            .shininess(8.0)
-            .build(),
-    );
+/// Builds the scene with every surface shaded by `hatch`, or with outlines
+/// only when no style is given.
+pub fn build(hatch: Option<HatchStyle>) -> TestScene {
+    let material = Material::new()
+        .diffuse(1.0)
+        .specular(0.35)
+        .shininess(8.0)
+        .maybe_hatch(hatch)
+        .build();
+    let mut assembler = Assembler::new(material);
 
     // Ground plane.
     assembler.quad(
@@ -79,9 +51,9 @@ pub fn build() -> TestScene {
     );
 
     // House walls. Footprint x in [-4, 4], y in [-3, 3], eaves at z = 3.
-    let door = FaceBox::new(FacePoint::new(3.3, 0.0), FacePoint::new(4.7, 2.2));
-    let window_a = FaceBox::new(FacePoint::new(0.9, 1.3), FacePoint::new(2.1, 2.5));
-    let window_b = FaceBox::new(FacePoint::new(5.9, 1.3), FacePoint::new(7.1, 2.5));
+    let door = opening((3.3, 0.0), (4.7, 2.2));
+    let window_a = opening((0.9, 1.3), (2.1, 2.5));
+    let window_b = opening((5.9, 1.3), (7.1, 2.5));
     assembler.quad(
         (-4.0, -3.0, 0.0),
         [(1.0, 0.0, 0.0), (0.0, 0.0, 1.0)],
@@ -100,12 +72,11 @@ pub fn build() -> TestScene {
         [6.0, 3.0],
         vec![],
     );
-    let side_window = FaceBox::new(FacePoint::new(2.4, 1.3), FacePoint::new(3.6, 2.5));
     assembler.quad(
         (4.0, -3.0, 0.0),
         [(0.0, 1.0, 0.0), (0.0, 0.0, 1.0)],
         [6.0, 3.0],
-        vec![side_window],
+        vec![opening((2.4, 1.3), (3.6, 2.5))],
     );
 
     // Roof planes rising from the eaves to a ridge at z = 5 along the x axis.
@@ -139,20 +110,18 @@ pub fn build() -> TestScene {
     assembler.cuboid((2.2, 0.8, 0.0), (3.2, 1.8, 6.0));
     assembler.cuboid((6.8, 0.8, 0.0), (7.2, 1.2, 2.4));
 
-    let balls = vec![assembler.ball((7.0, 1.0, 3.3), 1.3)];
+    // The tree canopy.
+    assembler.push(Arc::new(
+        Sphere::new().center((7.0, 1.0, 3.3)).radius(1.3).build(),
+    ));
 
-    // Door and window frames: drawn outlines with no collision geometry.
-    assembler.frame_holes_of_face(1);
-    assembler.frame_holes_of_face(4);
-
-    let light_position = WPoint3::new(-9.0, -13.0, 13.0);
     let scene = Scene::new()
         .geometry(assembler.drawables)
         .lighting(
             SceneLighting::new()
                 .with_lights(vec![Arc::new(
                     PointLight::new()
-                        .position(light_position)
+                        .position(light_position())
                         .intensity(2.2)
                         .specular_intensity(0.6)
                         .constant_attenuation(1.0)
@@ -160,7 +129,10 @@ pub fn build() -> TestScene {
                         .quadratic_attenuation(0.001)
                         .build(),
                 )])
-                .with_ambient_lighting(0.15),
+                .with_ambient_lighting(0.15)
+                .with_tone_white(
+                    ToneWhite::try_new(TONE_WHITE).expect("the lab's tone white is positive"),
+                ),
         )
         .build();
 
@@ -179,22 +151,77 @@ pub fn build() -> TestScene {
         )
         .build();
 
-    TestScene {
-        scene,
-        faces: assembler.faces,
-        balls,
-        camera,
-        light_position,
+    TestScene { scene, camera }
+}
+
+fn opening(min: (f64, f64), max: (f64, f64)) -> FaceBox {
+    FaceBox::new(FacePoint::new(min.0, min.1), FacePoint::new(max.0, max.1))
+}
+
+/// A wall with rectangular openings cut into it: the openings are drawn as
+/// frames and hatching skips them, though they remain solid to collision.
+#[derive(Debug)]
+struct WindowedQuad {
+    quad: Quad,
+    openings: Vec<FaceBox>,
+}
+
+impl WindowedQuad {
+    fn new(quad: Quad, openings: Vec<FaceBox>) -> Self {
+        Self { quad, openings }
+    }
+}
+
+impl Shape for WindowedQuad {
+    fn collision_geometry(&self) -> Option<Vec<Arc<dyn CollisionGeometry>>> {
+        self.quad.collision_geometry()
+    }
+
+    fn paths(&self, cam: &Camera) -> Vec<LineSegment3D<WorldSpace>> {
+        // Frames sit slightly proud of the wall so they survive its occlusion.
+        let lift = self.quad.basis[0].cross(self.quad.basis[1]) * 0.01;
+        let corner = |x: f64, y: f64| {
+            self.quad.origin + self.quad.basis[0] * x + self.quad.basis[1] * y + lift
+        };
+
+        let mut paths = self.quad.paths(cam);
+        for opening in &self.openings {
+            let (min, max) = (opening.min, opening.max);
+            paths.extend(LineSegment3D::from_points(vec![
+                (corner(min.x, min.y), corner(max.x, min.y)),
+                (corner(max.x, min.y), corner(max.x, max.y)),
+                (corner(max.x, max.y), corner(min.x, max.y)),
+                (corner(min.x, max.y), corner(min.x, min.y)),
+            ]));
+        }
+        paths
+    }
+
+    fn hatch_surfaces(&self) -> Vec<HatchSurface> {
+        let [width, height] = self.quad.dims;
+        let outline = vec![
+            FacePoint::new(0.0, 0.0),
+            FacePoint::new(width, 0.0),
+            FacePoint::new(width, height),
+            FacePoint::new(0.0, height),
+        ];
+        let surface = PlanarSurface::try_new(
+            self.quad.origin,
+            self.quad.basis,
+            outline,
+            self.openings.clone(),
+        )
+        .expect("the lab's walls are convex rectangles in an orthonormal frame");
+        vec![HatchSurface::Planar(surface)]
     }
 }
 
 /// Origin, basis pair, and dimensions describing one quad to assemble.
 type QuadSpec = ((f64, f64, f64), [(f64, f64, f64); 2], [f64; 2]);
 
-/// Accumulates scene geometry while recording hatchable face metadata.
+/// Accumulates the scene's geometry, giving every shape the same material.
 struct Assembler {
     material: Material,
-    faces: Vec<Face>,
     drawables: Vec<DrawableShape>,
 }
 
@@ -202,18 +229,17 @@ impl Assembler {
     fn new(material: Material) -> Self {
         Self {
             material,
-            faces: Vec::new(),
             drawables: Vec::new(),
         }
     }
 
-    fn register(&mut self, shape: Arc<dyn Shape>) -> DrawableShape {
-        let drawable = DrawableShape::new()
-            .geometry(shape)
-            .material(self.material)
-            .build();
-        self.drawables.push(drawable.clone());
-        drawable
+    fn push(&mut self, shape: Arc<dyn Shape>) {
+        self.drawables.push(
+            DrawableShape::new()
+                .geometry(shape)
+                .material(self.material.clone())
+                .build(),
+        );
     }
 
     fn quad(
@@ -221,30 +247,14 @@ impl Assembler {
         origin: (f64, f64, f64),
         basis: [(f64, f64, f64); 2],
         dims: [f64; 2],
-        holes: Vec<FaceBox>,
+        openings: Vec<FaceBox>,
     ) {
-        let origin = WPoint3::new(origin.0, origin.1, origin.2);
-        let b0 = WVec3::new(basis[0].0, basis[0].1, basis[0].2).normalize();
-        let b1 = WVec3::new(basis[1].0, basis[1].1, basis[1].2).normalize();
         let quad = Quad::new()
-            .origin(origin)
-            .basis([b0, b1])
+            .origin(point(origin))
+            .basis([vector(basis[0]), vector(basis[1])])
             .dims(dims)
             .build();
-        let drawable = self.register(Arc::new(quad));
-        self.faces.push(Face {
-            drawable,
-            origin,
-            basis: [b0, b1],
-            normal: b0.cross(b1),
-            outline: vec![
-                FacePoint::new(0.0, 0.0),
-                FacePoint::new(dims[0], 0.0),
-                FacePoint::new(dims[0], dims[1]),
-                FacePoint::new(0.0, dims[1]),
-            ],
-            holes,
-        });
+        self.push(Arc::new(WindowedQuad::new(quad, openings)));
     }
 
     fn gable(
@@ -253,35 +263,24 @@ impl Assembler {
         basis: [(f64, f64, f64); 2],
         verts: [(f64, f64); 3],
     ) {
-        let origin = WPoint3::new(origin.0, origin.1, origin.2);
-        let b0 = WVec3::new(basis[0].0, basis[0].1, basis[0].2).normalize();
-        let b1 = WVec3::new(basis[1].0, basis[1].1, basis[1].2).normalize();
+        let origin = point(origin);
+        let (b0, b1) = (vector(basis[0]), vector(basis[1]));
         let world = |v: (f64, f64)| origin + b0 * v.0 + b1 * v.1;
-        let tri = Triangle::new()
-            .v0(world(verts[0]))
-            .v1(world(verts[1]))
-            .v2(world(verts[2]))
-            .build();
-        let drawable = self.register(Arc::new(tri));
-        self.faces.push(Face {
-            drawable,
-            origin,
-            basis: [b0, b1],
-            normal: b0.cross(b1),
-            outline: verts.iter().map(|v| FacePoint::new(v.0, v.1)).collect(),
-            holes: vec![],
-        });
+        self.push(Arc::new(
+            Triangle::new()
+                .v0(world(verts[0]))
+                .v1(world(verts[1]))
+                .v2(world(verts[2]))
+                .build(),
+        ));
     }
 
-    /// Adds the five visible faces of an axis-aligned cuboid as quads.
+    /// Adds the five visible faces of an axis-aligned box as quads, so each
+    /// face hatches in its own plane.
     fn cuboid(&mut self, min: (f64, f64, f64), max: (f64, f64, f64)) {
         let (dx, dy, dz) = (max.0 - min.0, max.1 - min.1, max.2 - min.2);
         let sides: [QuadSpec; 5] = [
-            (
-                (min.0, min.1, min.2),
-                [(1.0, 0.0, 0.0), (0.0, 0.0, 1.0)],
-                [dx, dz],
-            ),
+            (min, [(1.0, 0.0, 0.0), (0.0, 0.0, 1.0)], [dx, dz]),
             (
                 (max.0, max.1, min.2),
                 [(-1.0, 0.0, 0.0), (0.0, 0.0, 1.0)],
@@ -307,24 +306,12 @@ impl Assembler {
             self.quad(origin, basis, dims, vec![]);
         }
     }
+}
 
-    fn ball(&mut self, center: (f64, f64, f64), radius: f64) -> Ball {
-        let center = WPoint3::new(center.0, center.1, center.2);
-        let shape = BallShape::new(Sphere::new().center(center).radius(radius).build());
-        let drawable = self.register(Arc::new(shape));
-        Ball {
-            drawable,
-            center,
-            radius,
-        }
-    }
+fn point(p: (f64, f64, f64)) -> WPoint3 {
+    WPoint3::new(p.0, p.1, p.2)
+}
 
-    fn frame_holes_of_face(&mut self, face_ndx: usize) {
-        let face = self.faces[face_ndx].clone();
-        for hole in face.holes.clone() {
-            let has_muntins = hole.min.y > 0.5;
-            let decal = Decal::new(face.clone(), hole, has_muntins);
-            self.register(Arc::new(decal));
-        }
-    }
+fn vector(v: (f64, f64, f64)) -> WVec3 {
+    WVec3::new(v.0, v.1, v.2).normalize()
 }

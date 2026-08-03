@@ -1,8 +1,6 @@
 //! Renders the architectural test scene once per hatching strategy and
 //! writes each result to `renders/<strategy>.svg` for visual comparison.
-mod hatch;
 mod scene;
-mod shapes;
 mod strategies;
 mod svg_out;
 
@@ -13,10 +11,9 @@ fn main() -> std::io::Result<()> {
     let out_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("renders");
     std::fs::create_dir_all(&out_dir)?;
 
-    let test = scene::build();
     for (name, strategy) in strategies::all() {
         let started = Instant::now();
-        let render = strategy(&test);
+        let render = strategy();
         let elapsed = started.elapsed();
 
         let out_path = out_dir.join(format!("{name}.svg"));

@@ -47,7 +47,7 @@ fn main() {
                         .max((1.0, 1.0, 1.0))
                         .build(),
                 ))
-                .material(cube_material)
+                .material(cube_material.clone())
                 .build(),
             DrawableShape::new()
                 .geometry(Arc::new(
@@ -56,7 +56,7 @@ fn main() {
                         .max((3.8, 1.0, 1.0))
                         .build(),
                 ))
-                .material(cube_material)
+                .material(cube_material.clone())
                 .build(),
             DrawableShape::new()
                 .geometry(Arc::new(
@@ -102,7 +102,7 @@ fn main() {
         )
         .build();
 
-    let render_result = scene.attach_camera(camera).render_with_lighting();
+    let render_result = scene.attach_camera(camera).render_with_screen_hatching();
 
     let mut svg_doc = svg::Document::new()
         .set("width", "8in")

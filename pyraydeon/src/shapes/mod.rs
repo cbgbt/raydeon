@@ -221,6 +221,12 @@ impl raydeon::Shape for PythonGeometry {
         collision_geometry
     }
 
+    /// Python-defined shapes opt in to hatching by handing over their own
+    /// surfaces, which they cannot do until the bridge for that lands.
+    fn hatch_surfaces(&self) -> Vec<raydeon::HatchSurface> {
+        Vec::new()
+    }
+
     fn paths(&self, cam: &raydeon::Camera) -> Vec<raydeon::path::LineSegment3D<WorldSpace>> {
         let segments: Option<_> = Python::with_gil(|py| {
             let inner = self.slf.bind(py);

@@ -69,7 +69,7 @@ impl DrawableShape {
 
     #[getter]
     fn material(&self) -> Option<Material> {
-        self.raydeon_drawable.material().map(Into::into)
+        self.raydeon_drawable.material().cloned().map(Into::into)
     }
 
     #[getter]

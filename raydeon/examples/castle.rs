@@ -80,7 +80,7 @@ fn main() {
     let rendering = scene
         .attach_camera(camera)
         .with_seed(0)
-        .render_with_lighting();
+        .render_with_screen_hatching();
 
     let mut svg_doc = svg::Document::new()
         .set("width", "8in")

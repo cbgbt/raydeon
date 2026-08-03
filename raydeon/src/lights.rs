@@ -91,7 +91,8 @@ impl PointLight {
 
     fn diffuse_illumination(&self, hit_shape: HitShape) -> f64 {
         let hitpoint = &hit_shape.hit_data;
-        let material = hit_shape.hit_shape.material().unwrap_or_default();
+        let unmaterialed = Material::default();
+        let material = hit_shape.hit_shape.material().unwrap_or(&unmaterialed);
         let to_light = (self.position - hitpoint.hit_point).normalize();
         let diffuse_scale = to_light.dot(hitpoint.normal).max(0.0);
         material.diffuse * self.intensity * diffuse_scale
@@ -99,7 +100,8 @@ impl PointLight {
 
     fn specular_illumination(&self, hit_shape: HitShape, eye: WPoint3) -> f64 {
         let hitpoint = hit_shape.hit_data;
-        let material = hit_shape.hit_shape.material().unwrap_or_default();
+        let unmaterialed = Material::default();
+        let material = hit_shape.hit_shape.material().unwrap_or(&unmaterialed);
         let to_light = (self.position - hitpoint.hit_point).normalize();
 
         let v = (eye - hitpoint.hit_point).normalize();

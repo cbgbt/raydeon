@@ -4,8 +4,11 @@ use core::f64;
 use euclid::Vector3D;
 use std::sync::Arc;
 
+use crate::hatch::surface::{offer_planar, FacePoint, PlanarSurface};
 use crate::path::LineSegment3D;
-use crate::{Camera, CollisionGeometry, HitData, Ray, Shape, WPoint3, WVec3, WorldSpace, AABB3};
+use crate::{
+    Camera, CollisionGeometry, HatchSurface, HitData, Ray, Shape, WPoint3, WVec3, WorldSpace, AABB3,
+};
 
 #[derive(Debug, Copy, Clone, Builder)]
 #[builder(start_fn(name = new))]
@@ -63,6 +66,55 @@ impl Shape for AxisAlignedCuboid {
             (p3, p7),
             (p4, p8),
         ])
+    }
+
+    fn hatch_surfaces(&self) -> Vec<HatchSurface> {
+        self.faces()
+            .into_iter()
+            .filter_map(|(origin, basis, dims)| {
+                let outline = vec![
+                    FacePoint::new(0.0, 0.0),
+                    FacePoint::new(dims[0], 0.0),
+                    FacePoint::new(dims[0], dims[1]),
+                    FacePoint::new(0.0, dims[1]),
+                ];
+                offer_planar(PlanarSurface::try_new(origin, basis, outline, vec![]), self)
+            })
+            .collect()
+    }
+}
+
+/// A face of the cuboid: where its frame starts, the frame's axes (whose
+/// cross product points out of the cuboid), and how far the face extends
+/// along them.
+type Face = (WPoint3, [WVec3; 2], [f64; 2]);
+
+impl AxisAlignedCuboid {
+    /// The six outward-facing sides of the cuboid.
+    fn faces(&self) -> [Face; 6] {
+        let (min, max) = (self.min, self.max);
+        let extent = max - min;
+        let (x, y, z) = (
+            WVec3::new(1.0, 0.0, 0.0),
+            WVec3::new(0.0, 1.0, 0.0),
+            WVec3::new(0.0, 0.0, 1.0),
+        );
+        let corner = |xs: f64, ys: f64, zs: f64| {
+            WPoint3::new(
+                if xs > 0.0 { max.x } else { min.x },
+                if ys > 0.0 { max.y } else { min.y },
+                if zs > 0.0 { max.z } else { min.z },
+            )
+        };
+
+        [
+            (corner(-1.0, -1.0, -1.0), [y, x], [extent.y, extent.x]),
+            (corner(-1.0, -1.0, 1.0), [x, y], [extent.x, extent.y]),
+            (corner(-1.0, -1.0, -1.0), [x, z], [extent.x, extent.z]),
+            (corner(1.0, 1.0, -1.0), [-x, z], [extent.x, extent.z]),
+            (corner(-1.0, 1.0, -1.0), [-y, z], [extent.y, extent.z]),
+            (corner(1.0, -1.0, -1.0), [y, z], [extent.y, extent.z]),
+        ]
     }
 }
 

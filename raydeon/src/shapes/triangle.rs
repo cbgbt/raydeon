@@ -3,8 +3,11 @@ use bon::Builder;
 use std::sync::Arc;
 
 use super::plane::Plane;
+use crate::hatch::surface::{offer_planar, FacePoint, PlanarSurface};
 use crate::path::LineSegment3D;
-use crate::{Camera, CollisionGeometry, HitData, Ray, Shape, WPoint3, WVec3, WorldSpace};
+use crate::{
+    Camera, CollisionGeometry, HatchSurface, HitData, Ray, Shape, WPoint3, WVec3, WorldSpace,
+};
 
 #[derive(Debug, Copy, Clone, Builder)]
 #[builder(start_fn(name = new))]
@@ -47,6 +50,25 @@ impl Shape for Triangle {
         let v2 = v2 + (v2 - centroid).normalize() * 0.015;
 
         LineSegment3D::from_points(vec![(v0, v1), (v1, v2), (v2, v0)])
+    }
+
+    fn hatch_surfaces(&self) -> Vec<HatchSurface> {
+        // The first edge sets the frame's x axis; the plane normal completes
+        // it, so the surface faces the way the triangle does.
+        let along = (self.v1 - self.v0).normalize();
+        let up = self.plane.normal.cross(along);
+        let corner = |vert: WPoint3| {
+            let offset = vert - self.v0;
+            FacePoint::new(offset.dot(along), offset.dot(up))
+        };
+        let outline = self.verts.iter().map(|vert| corner(*vert)).collect();
+
+        offer_planar(
+            PlanarSurface::try_new(self.v0, [along, up], outline, vec![]),
+            self,
+        )
+        .into_iter()
+        .collect()
     }
 }
 

@@ -3,9 +3,8 @@
 //! Every strategy renders the same test scene and returns screen-space
 //! outline and hatch stroke sets, so results differ only in how shading
 //! strokes are conceived.
-use crate::hatch;
-use crate::scene::{Face, TestScene};
-use raydeon::{CameraSpace, Point2, StrokeKind, WVec3};
+use crate::scene;
+use raydeon::{CameraSpace, HatchSpacing, HatchStyle, Point2, Rendering, StrokeKind};
 
 /// A single screen-space pen stroke.
 pub type Stroke = (Point2<CameraSpace>, Point2<CameraSpace>);
@@ -16,158 +15,75 @@ pub struct StrategyRender {
     pub hatch: Vec<Stroke>,
 }
 
+/// Distance between hatch lines, in world units.
 const HATCH_SPACING: f64 = 0.22;
-const TIGHT_SPACING: f64 = 0.15;
+
+/// The seed the scattered strategies are drawn with.
+const SEED: u64 = 42;
 
 /// A strategy paired with the output name of its render.
-pub type NamedStrategy = (&'static str, fn(&TestScene) -> StrategyRender);
+pub type NamedStrategy = (&'static str, fn() -> StrategyRender);
 
 pub fn all() -> Vec<NamedStrategy> {
     vec![
         ("a_screen_space", screen_space_baseline),
-        ("b_world_uniform", world_uniform),
+        ("b_stochastic", stochastic),
         ("c_crosshatch_tonal", crosshatch_tonal),
         ("d_light_flow", light_flow),
     ]
 }
 
-/// Baseline: raydeon's current screen-space hatching, seeded for determinism.
-fn screen_space_baseline(test: &TestScene) -> StrategyRender {
-    let scene_camera = test.scene.attach_camera(test.camera.clone()).with_seed(42);
+/// Baseline: raydeon's screen-space hatching, which shades the image rather
+/// than the surfaces.
+fn screen_space_baseline() -> StrategyRender {
+    let test = scene::build(None);
+    let scene_camera = test
+        .scene
+        .attach_camera(test.camera.clone())
+        .with_seed(SEED);
+    split(&scene_camera.render_with_screen_hatching())
+}
+
+/// One direction, thinning out towards the light.
+fn stochastic() -> StrategyRender {
+    world_hatched(HatchStyle::stochastic(spacing()))
+}
+
+/// Discrete tonal bands: darker regions accumulate additional cross-hatch
+/// directions at tighter spacing, like an engraving.
+fn crosshatch_tonal() -> StrategyRender {
+    world_hatched(HatchStyle::tonal_crosshatch(spacing()))
+}
+
+/// Strokes which flow along the light across each surface, crossed only in
+/// deep shadow.
+fn light_flow() -> StrategyRender {
+    world_hatched(HatchStyle::light_flow(scene::light_position(), spacing()))
+}
+
+fn world_hatched(style: HatchStyle) -> StrategyRender {
+    let test = scene::build(Some(style));
+    let scene_camera = test
+        .scene
+        .attach_camera(test.camera.clone())
+        .with_seed(SEED);
+    split(&scene_camera.render())
+}
+
+fn spacing() -> HatchSpacing {
+    HatchSpacing::try_new(HATCH_SPACING).expect("the lab's hatch spacing is positive")
+}
+
+/// Splits a rendering into the two pens the lab plots with.
+fn split(rendering: &Rendering) -> StrategyRender {
     let mut outline = Vec::new();
     let mut hatch = Vec::new();
-    for stroke in scene_camera.render_with_lighting().strokes() {
+    for stroke in rendering.strokes() {
         let points = (stroke.p1, stroke.p2);
         match stroke.kind {
             StrokeKind::Outline => outline.push(points),
             StrokeKind::Hatch => hatch.push(points),
         }
     }
-    StrategyRender { outline, hatch }
-}
-
-/// World-space hatching at a fixed 45 degree angle per face, with stochastic
-/// keep probability driven by illumination.
-fn world_uniform(test: &TestScene) -> StrategyRender {
-    let keep = |tone: f64, seed: u64| tone < hatch::jitter01(seed) * 0.9;
-
-    let mut lines = hatch::hatch_faces(test, |_| std::f64::consts::FRAC_PI_4, HATCH_SPACING, keep);
-    for ball in &test.balls {
-        lines.extend(hatch::ball_rings(
-            &test.scene,
-            test.camera.observation.eye(),
-            ball,
-            WVec3::new(0.0, 0.0, 1.0),
-            HATCH_SPACING,
-            keep,
-        ));
-    }
-    project(test, lines)
-}
-
-/// Discrete tonal bands: darker regions accumulate additional cross-hatch
-/// directions at tighter spacing, like an engraving.
-fn crosshatch_tonal(test: &TestScene) -> StrategyRender {
-    let passes: [(f64, f64, f64); 4] = [
-        // (angle radians, spacing, tone threshold)
-        (std::f64::consts::FRAC_PI_4, HATCH_SPACING, 0.78),
-        (3.0 * std::f64::consts::FRAC_PI_4, HATCH_SPACING, 0.55),
-        (0.0, TIGHT_SPACING, 0.33),
-        (std::f64::consts::FRAC_PI_2, TIGHT_SPACING, 0.16),
-    ];
-
-    let mut lines = Vec::new();
-    for (angle, spacing, threshold) in passes {
-        lines.extend(hatch::hatch_faces(
-            test,
-            move |_| angle,
-            spacing,
-            move |tone, _| tone < threshold,
-        ));
-    }
-
-    let ring_axes = [
-        (WVec3::new(0.0, 0.0, 1.0), HATCH_SPACING, 0.78),
-        (WVec3::new(1.0, 0.0, 0.0), HATCH_SPACING, 0.55),
-        (WVec3::new(0.0, 1.0, 0.0), TIGHT_SPACING, 0.33),
-    ];
-    for ball in &test.balls {
-        for (axis, spacing, threshold) in ring_axes {
-            lines.extend(hatch::ball_rings(
-                &test.scene,
-                test.camera.observation.eye(),
-                ball,
-                axis,
-                spacing,
-                |tone, _| tone < threshold,
-            ));
-        }
-    }
-    project(test, lines)
-}
-
-/// Hatch strokes flow along each face's projection of the light direction,
-/// with a perpendicular cross pass appearing only in deep shadow. Sphere
-/// rings wrap around the axis pointing at the light.
-fn light_flow(test: &TestScene) -> StrategyRender {
-    let flow_keep = |tone: f64, seed: u64| tone < hatch::jitter01(seed) * 0.95;
-    let flow_angle = |face: &Face| light_flow_angle(test, face);
-
-    let mut lines = hatch::hatch_faces(test, flow_angle, HATCH_SPACING, flow_keep);
-    lines.extend(hatch::hatch_faces(
-        test,
-        |face| light_flow_angle(test, face) + std::f64::consts::FRAC_PI_2,
-        TIGHT_SPACING,
-        |tone, _| tone < 0.2,
-    ));
-
-    for ball in &test.balls {
-        let axis = ball.center - test.light_position;
-        lines.extend(hatch::ball_rings(
-            &test.scene,
-            test.camera.observation.eye(),
-            ball,
-            axis,
-            HATCH_SPACING,
-            flow_keep,
-        ));
-    }
-    project(test, lines)
-}
-
-/// The in-plane angle of the light direction projected onto the face.
-fn light_flow_angle(test: &TestScene, face: &Face) -> f64 {
-    let centroid_2d = face.outline.iter().fold(
-        euclid::Vector2D::zero(),
-        |acc: euclid::Vector2D<f64, _>, p| acc + p.to_vector(),
-    ) / face.outline.len() as f64;
-    let centroid = face.to_world(centroid_2d.to_point());
-    let to_light = (test.light_position - centroid).normalize();
-    let in_plane = to_light - face.normal * to_light.dot(face.normal);
-    if in_plane.length() < 1.0e-6 {
-        return std::f64::consts::FRAC_PI_4;
-    }
-    in_plane
-        .dot(face.basis[1])
-        .atan2(in_plane.dot(face.basis[0]))
-}
-
-/// Clips hatch lines against the scene and pairs them with outline geometry.
-fn project(
-    test: &TestScene,
-    lines: Vec<raydeon::LineSegment3D<raydeon::WorldSpace>>,
-) -> StrategyRender {
-    let scene_camera = test.scene.attach_camera(test.camera.clone());
-    let outline = scene_camera
-        .render()
-        .strokes()
-        .iter()
-        .map(|stroke| (stroke.p1, stroke.p2))
-        .collect();
-    let hatch = scene_camera
-        .clip_and_project(&lines)
-        .into_iter()
-        .map(|segment| (segment.p1, segment.p2))
-        .collect();
     StrategyRender { outline, hatch }
 }

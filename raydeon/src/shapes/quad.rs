@@ -2,8 +2,9 @@ use bon::Builder;
 use std::sync::Arc;
 
 use super::Triangle;
+use crate::hatch::surface::{offer_planar, FacePoint, PlanarSurface};
 use crate::path::LineSegment3D;
-use crate::{Camera, CollisionGeometry, Shape, WPoint3, WVec3, WorldSpace};
+use crate::{Camera, CollisionGeometry, HatchSurface, Shape, WPoint3, WVec3, WorldSpace};
 
 #[derive(Debug, Copy, Clone, Builder)]
 #[builder(start_fn(name = new))]
@@ -63,5 +64,21 @@ impl Shape for Quad {
             .collect::<Vec<_>>();
 
         LineSegment3D::from_points(vec![(v[0], v[1]), (v[1], v[2]), (v[2], v[3]), (v[3], v[0])])
+    }
+
+    fn hatch_surfaces(&self) -> Vec<HatchSurface> {
+        let [width, height] = self.dims;
+        let outline = vec![
+            FacePoint::new(0.0, 0.0),
+            FacePoint::new(width, 0.0),
+            FacePoint::new(width, height),
+            FacePoint::new(0.0, height),
+        ];
+        offer_planar(
+            PlanarSurface::try_new(self.origin, self.basis, outline, vec![]),
+            self,
+        )
+        .into_iter()
+        .collect()
     }
 }

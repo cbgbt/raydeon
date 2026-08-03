@@ -4,6 +4,7 @@ use bon::Builder;
 #[doc = include_str!("../../README.md")]
 pub(crate) mod bvh;
 pub mod camera;
+pub mod hatch;
 pub mod lights;
 pub mod material;
 pub mod path;
@@ -16,11 +17,16 @@ use std::fmt::Debug;
 use std::sync::Arc;
 
 pub use camera::{Camera, CameraOptions, LookAtError, Observation, Perspective, PerspectiveError};
+pub use hatch::style::{HatchCoverage, HatchSpacing, HatchStyle, TonalPass, ToneThreshold};
+pub use hatch::surface::{
+    FaceBox, FacePoint, FaceSpace, HatchSurface, PlanarSurface, PlanarSurfaceError, SphereSurface,
+    SphereSurfaceError,
+};
 pub use lights::Light;
 pub use material::Material;
 pub use path::LineSegment3D;
 pub use ray::{HitData, Ray};
-pub use scene::{Scene, SceneGeometry, SceneLighting};
+pub use scene::{Scene, SceneGeometry, SceneLighting, ToneWhite};
 pub use stroke::{PenId, Rendering, Stroke, StrokeKind};
 
 /// Tolerance for the approximate geometric comparisons in tests.
@@ -57,6 +63,12 @@ pub type CCTransform = Transform3<CameraSpace, CameraSpace>;
 pub trait Shape: Send + Sync + std::fmt::Debug {
     fn collision_geometry(&self) -> Option<Vec<Arc<dyn CollisionGeometry>>>;
     fn paths(&self, cam: &Camera) -> Vec<LineSegment3D<WorldSpace>>;
+
+    /// The surfaces this shape offers up for world-space hatching.
+    ///
+    /// Returning no surfaces is a complete answer: it says this shape is not
+    /// hatchable, and a material's hatch style has nothing to draw on.
+    fn hatch_surfaces(&self) -> Vec<HatchSurface>;
 }
 
 pub trait CollisionGeometry: Send + Sync + std::fmt::Debug {
@@ -80,7 +92,11 @@ impl DrawableShape {
         self.geometry.paths(cam)
     }
 
-    pub fn material(&self) -> Option<Material> {
-        self.material
+    pub fn hatch_surfaces(&self) -> Vec<HatchSurface> {
+        self.geometry.hatch_surfaces()
+    }
+
+    pub fn material(&self) -> Option<&Material> {
+        self.material.as_ref()
     }
 }
