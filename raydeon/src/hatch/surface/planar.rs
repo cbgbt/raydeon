@@ -144,6 +144,15 @@ impl PlanarSurface {
         self.origin + self.basis[0] * point.x + self.basis[1] * point.y
     }
 
+    /// The face-space coordinates of a world point at or near the surface:
+    /// the inverse of [`Self::to_world`]. `basis` is orthonormal, so this is
+    /// a plain projection — any component of `point` along the normal (a
+    /// contour's `LINE_LIFT`, say) is simply dropped.
+    pub(crate) fn to_face(&self, point: WPoint3) -> FacePoint {
+        let offset = point - self.origin;
+        FacePoint::new(offset.dot(self.basis[0]), offset.dot(self.basis[1]))
+    }
+
     pub(crate) fn outline(&self) -> &[FacePoint] {
         &self.outline
     }

@@ -5,8 +5,8 @@
 use raydeon::lights::PointLight;
 use raydeon::shapes::AxisAlignedCuboid;
 use raydeon::{
-    Camera, DrawableShape, HatchSpacing, HatchStyle, Material, PenId, Scene, SceneLighting,
-    WPoint3, WVec3,
+    Camera, ContourStyle, DrawableShape, HatchSpacing, HatchStyle, Material, PenId, Scene,
+    SceneLighting, StrokeKind, ToneThreshold, WPoint3, WVec3,
 };
 use std::sync::Arc;
 
@@ -14,6 +14,54 @@ use std::sync::Arc;
 /// and joining rather than whole unbroken edges.
 fn occluding_scene() -> Scene {
     scene_of(None)
+}
+
+/// The same cubes, each with a tone contour opted in, so the render also
+/// exercises the contour grid and marching-squares extraction.
+fn contoured_scene() -> Scene {
+    let threshold = ToneThreshold::try_new(0.5).expect("0.5 is a valid tone threshold");
+    let style = ContourStyle::shadow(threshold);
+
+    let cuboids = [
+        ((-1.0, -1.0, -1.0), (1.0, 1.0, 1.0)),
+        ((1.8, -1.0, -1.0), (3.8, 1.0, 1.0)),
+        ((-1.4, 1.8, -1.0), (0.6, 3.8, 1.0)),
+        ((-0.5, -0.5, 1.0), (0.5, 0.5, 2.6)),
+    ];
+
+    let geometry = cuboids
+        .into_iter()
+        .enumerate()
+        .map(|(ndx, (min, max))| {
+            DrawableShape::new()
+                .geometry(Arc::new(AxisAlignedCuboid::new().min(min).max(max).build()))
+                .material(
+                    Material::new()
+                        .diffuse(3.0)
+                        .pen(PenId::new(ndx))
+                        .contours(style.clone())
+                        .build(),
+                )
+                .build()
+        })
+        .collect::<Vec<_>>();
+
+    Scene::new()
+        .geometry(geometry)
+        .lighting(
+            SceneLighting::new()
+                .with_lights(vec![Arc::new(
+                    PointLight::new()
+                        .position((5.5, 12.0, 7.3))
+                        .intensity(20.0)
+                        .constant_attenuation(0.0)
+                        .linear_attenuation(0.09)
+                        .quadratic_attenuation(0.23)
+                        .build(),
+                )])
+                .with_ambient_lighting(0.13),
+        )
+        .build()
 }
 
 /// The same cubes, shaded by a lit hatching style, so the render exercises
@@ -150,4 +198,52 @@ fn a_different_seed_draws_a_different_scatter() {
     let seeded = scene.attach_camera(camera).with_seed(17).render();
 
     assert_ne!(unseeded.strokes(), seeded.strokes());
+}
+
+/// The strokes a contour engine, deterministic and seed-independent, must
+/// draw the exact same regardless of how many times it runs (invariant 4).
+#[test]
+fn renders_the_same_contour_strokes_every_time() {
+    let scene = contoured_scene();
+    let scene_camera = scene.attach_camera(camera());
+
+    let first = scene_camera.render();
+    let second = scene_camera.render();
+
+    assert!(
+        first
+            .strokes()
+            .iter()
+            .any(|stroke| stroke.kind == StrokeKind::Contour),
+        "the contoured scene drew no Contour strokes, so this pins nothing"
+    );
+    assert_eq!(first.strokes(), second.strokes());
+}
+
+/// Contour extraction is grid-and-field math, not scatter: it must not
+/// depend on the render seed at all (invariant 4), unlike the stochastic
+/// hatch noise `a_different_seed_draws_a_different_scatter` pins above.
+#[test]
+fn a_different_seed_draws_the_same_contour_strokes() {
+    let scene = contoured_scene();
+    let camera = camera();
+
+    let seed_0 = scene.attach_camera(camera.clone()).render();
+    let seed_7 = scene.attach_camera(camera).with_seed(7).render();
+
+    let contours_of = |rendering: &raydeon::Rendering| -> Vec<raydeon::Stroke> {
+        rendering
+            .strokes()
+            .iter()
+            .filter(|stroke| stroke.kind == StrokeKind::Contour)
+            .copied()
+            .collect()
+    };
+
+    let (contours_0, contours_7) = (contours_of(&seed_0), contours_of(&seed_7));
+    assert!(
+        !contours_0.is_empty(),
+        "the contoured scene drew no Contour strokes"
+    );
+    assert_eq!(contours_0, contours_7);
 }

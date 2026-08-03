@@ -14,7 +14,12 @@ use crate::{DrawableShape, HitData, LineSegment3D, Scene, WPoint3, WVec3, WorldS
 /// A hatch line sits this far off its surface so that the renderer's
 /// visibility ray does not immediately strike the surface the line is drawn
 /// on and erase it.
-const LINE_LIFT: f64 = 0.006;
+///
+/// `pub(crate)` because the contour grid (`hatch::contour::grid`) lifts its
+/// nodes by the same amount: a `Tone` contour must sit at the position a
+/// hatch chop measures its tone at (invariant 10), and both need the one
+/// shared constant to do it.
+pub(crate) const LINE_LIFT: f64 = 0.006;
 
 /// Illumination samples are taken this far off the surface, for the same
 /// reason: a shadow ray must clear the face it starts from.
@@ -31,7 +36,7 @@ pub(crate) const SAMPLE_LEN: f64 = 0.16;
 const MIN_INTERVAL: f64 = 1.0e-6;
 
 /// A direction in a planar surface's frame.
-type FaceVec = euclid::Vector2D<f64, super::surface::FaceSpace>;
+pub(crate) type FaceVec = euclid::Vector2D<f64, super::surface::FaceSpace>;
 
 /// Parallel lines across `surface` at `angle`, `spacing` apart, clipped to
 /// the outline and interrupted by its holes.
@@ -220,8 +225,7 @@ pub(crate) fn filter_by_tone(
         .filter_map(|(ndx, sub)| {
             let midpoint = sub.midpoint();
             let normal = normal_at(midpoint);
-            let hit = HitData::new(midpoint + normal * SAMPLE_LIFT, 1.0, normal);
-            let tone = scene.tone_for_hit(HitShape::new(hit, drawable), eye);
+            let tone = surface_tone(scene, drawable, eye, midpoint, normal);
             (!keep(tone, midpoint)).then_some(ndx)
         })
         .collect();
@@ -230,6 +234,30 @@ pub(crate) fn filter_by_tone(
         .for_each(|ndx| sliced.remove_subsegment(ndx));
 
     sliced.join_slices_with_forgiveness(1)
+}
+
+/// The tone (`[0, 1]`, scene-normalized brightness) at `point`, which must
+/// already sit `LINE_LIFT` off the surface along `normal` — a hatch chop's
+/// midpoint on a lifted line, or a contour grid node's own lifted position.
+///
+/// Adds `SAMPLE_LIFT` on top before casting the shadow ray, exactly as
+/// `filter_by_tone` always has, so both callers measure the SAME field at
+/// the SAME net lift (`LINE_LIFT + SAMPLE_LIFT`): a `Tone` contour therefore
+/// lies precisely where a threshold-matched hatch pass starts drawing
+/// (invariant 10), not merely close to it.
+///
+/// `drawable` must be the scene's own entry for the surface being sampled,
+/// so the shadow query recognizes it and does not shadow the point against
+/// the face it lies on.
+pub(crate) fn surface_tone(
+    scene: &Scene,
+    drawable: &DrawableShape,
+    eye: WPoint3,
+    point: WPoint3,
+    normal: WVec3,
+) -> f64 {
+    let hit = HitData::new(point + normal * SAMPLE_LIFT, 1.0, normal);
+    scene.tone_for_hit(HitShape::new(hit, drawable), eye)
 }
 
 /// A pair of unit vectors spanning the plane perpendicular to `axis`.
@@ -260,7 +288,11 @@ fn extent_along(surface: &PlanarSurface, direction: FaceVec) -> (f64, f64) {
 
 /// Clips the line `anchor + t * dir` to the convex outline, returning the
 /// range of `t` inside it.
-fn clip_to_outline(
+///
+/// `pub(crate)`: the contour engine's planar clip step (`hatch::contour`)
+/// reuses this same interval math for arbitrary marching-squares segments,
+/// not just axis-aligned hatch lines.
+pub(crate) fn clip_to_outline(
     surface: &PlanarSurface,
     anchor: FaceVec,
     dir: FaceVec,
@@ -300,7 +332,10 @@ fn clip_to_outline(
 }
 
 /// Splits `span` around the stretches where the line passes through a hole.
-fn subtract_holes(
+///
+/// `pub(crate)`: shared with the contour engine's planar clip step, for the
+/// same reason as `clip_to_outline`.
+pub(crate) fn subtract_holes(
     holes: &[FaceBox],
     anchor: FaceVec,
     dir: FaceVec,
@@ -462,6 +497,70 @@ mod tests {
         let (dir, perp) = along_x();
         let holes = [hole((-1.0, -1.0), (5.0, 5.0))];
         assert!(subtract_holes(&holes, perp * 2.0, dir, (0.0, 4.0)).is_empty());
+    }
+
+    #[test]
+    fn a_hatch_chop_and_a_contour_grid_node_at_the_same_point_measure_bit_identical_tone() {
+        use crate::hatch::contour::grid;
+        use crate::hatch::contour::ContourResolution;
+        use crate::hatch::surface::HatchSurface;
+        use crate::lights::PointLight;
+        use crate::{DrawableShape, Material, PenId, Scene, SceneLighting, ToneWhite};
+        use std::sync::Arc;
+
+        // A resolution which divides the surface's 4x4 extent evenly, so a
+        // grid node lands exactly at face point (2, 2) — the same point a
+        // hatch chop can be made to sample.
+        let surface = square(vec![]);
+        let resolution = ContourResolution::try_new(1.0).expect("1.0 is a valid resolution");
+        let grid = grid::surface_grid(&HatchSurface::Planar(surface.clone()), resolution);
+        let (node_point, node_normal) = grid.node(2, 2);
+
+        assert_eq!(
+            node_point,
+            surface.to_world(FacePoint::new(2.0, 2.0)) + surface.normal() * LINE_LIFT,
+            "the grid node must carry the same LINE_LIFT a hatch line's chop midpoint does"
+        );
+
+        let material = Material::new().diffuse(1.0).pen(PenId::new(0)).build();
+        let drawable = DrawableShape::new()
+            .geometry(Arc::new(
+                crate::shapes::Quad::new()
+                    .origin(surface.to_world(FacePoint::new(0.0, 0.0)))
+                    .basis([WVec3::new(1.0, 0.0, 0.0), WVec3::new(0.0, 1.0, 0.0)])
+                    .dims([4.0, 4.0])
+                    .build(),
+            ))
+            .material(material)
+            .build();
+        let scene = Scene::new()
+            .geometry(vec![drawable.clone()])
+            .lighting(
+                SceneLighting::new()
+                    .with_lights(vec![Arc::new(
+                        PointLight::new()
+                            .position((1.0, 1.0, 5.0))
+                            .intensity(2.0)
+                            .build(),
+                    )])
+                    .with_tone_white(ToneWhite::try_new(1.0).expect("1.0 is a valid tone white")),
+            )
+            .build();
+        let eye = WPoint3::new(2.0, 2.0, 10.0);
+
+        // The hatch path: `filter_by_tone` samples at a chop's midpoint,
+        // which is exactly this LINE_LIFT-lifted surface point when the
+        // chop happens to land there.
+        let hatch_sample_point =
+            surface.to_world(FacePoint::new(2.0, 2.0)) + surface.normal() * LINE_LIFT;
+
+        let hatch_tone = surface_tone(&scene, &drawable, eye, hatch_sample_point, surface.normal());
+        let contour_tone = surface_tone(&scene, &drawable, eye, node_point, node_normal);
+
+        assert_eq!(
+            hatch_tone, contour_tone,
+            "the same LINE_LIFT-lifted point must measure bit-identical tone from either caller"
+        );
     }
 
     #[test]

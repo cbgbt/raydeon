@@ -276,16 +276,30 @@ impl<'s> SceneCamera<'s> {
 
                 let outlines =
                     self.strokes_from(&shape.paths(&self.camera), pen, StrokeKind::Outline);
-                let Some(style) = material.and_then(|mat| mat.hatch.as_ref()) else {
-                    return outlines;
-                };
 
-                let hatching = hatch::hatch_shape(self, shape, style);
-                [
-                    outlines,
-                    self.strokes_from(&hatching, pen, StrokeKind::Hatch),
-                ]
-                .concat()
+                let hatching =
+                    material
+                        .and_then(|mat| mat.hatch.as_ref())
+                        .map_or_else(Vec::new, |style| {
+                            self.strokes_from(
+                                &hatch::hatch_shape(self, shape, style),
+                                pen,
+                                StrokeKind::Hatch,
+                            )
+                        });
+
+                let contours =
+                    material
+                        .and_then(|mat| mat.contours.as_ref())
+                        .map_or_else(Vec::new, |style| {
+                            self.strokes_from(
+                                &hatch::contour::contour_shape(self, shape, style),
+                                pen,
+                                StrokeKind::Contour,
+                            )
+                        });
+
+                [outlines, hatching, contours].concat()
             })
             .collect();
 
