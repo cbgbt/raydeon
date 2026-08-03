@@ -5,8 +5,8 @@ use euclid::Angle;
 use raydeon::lights::PointLight;
 use raydeon::shapes::{AxisAlignedCuboid, Quad, Sphere, Triangle};
 use raydeon::{
-    Camera, DrawableShape, HatchSpacing, HatchStyle, Material, PenId, Rendering, Scene,
-    SceneLighting, Shape, StrokeKind, TonalPass, ToneThreshold, ToneWhite, WPoint3, WVec3,
+    Camera, ContourStyle, DrawableShape, HatchSpacing, HatchStyle, Material, PenId, Rendering,
+    Scene, SceneLighting, Shape, StrokeKind, TonalPass, ToneThreshold, ToneWhite, WPoint3, WVec3,
 };
 use std::path::PathBuf;
 use std::sync::Arc;
@@ -30,36 +30,68 @@ const PENS: [(usize, &str, &str); 4] = [
     (3, "slate", "#41597a"),
 ];
 
-fn main() -> std::io::Result<()> {
-    let scene = build_scene();
-    let camera = Camera::new()
-        .observation(
-            Camera::look_at(
-                WPoint3::new(-7.8, -10.5, 3.9),
-                WVec3::new(0.6, 0.2, 2.2),
-                WVec3::new(0.0, 0.0, 1.0),
-            )
-            .expect("the storefront camera looks at the shop"),
-        )
-        .perspective(
-            Camera::perspective(41.0, WIDTH, HEIGHT, 0.1, 60.0)
-                .expect("the storefront frustum is well formed"),
-        )
-        .build();
+/// The lab's A/B: the same shop, with and without contour strokes, so the
+/// two renders sit side by side without a flag to remember to flip.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum ContourChoice {
+    Off,
+    On,
+}
 
-    let rendering = scene.attach_camera(camera).render();
-    let out = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("renders/storefront.svg");
-    write_svg(&rendering, &out)?;
-    println!(
-        "storefront: {} strokes across {} pens -> {}",
-        rendering.strokes().len(),
-        rendering.pens().len(),
-        out.display()
-    );
+impl ContourChoice {
+    /// Tone-band edges of `style`, one contour per band this material's
+    /// hatch already steps at — off entirely unless this run wants them.
+    fn band_edges(self, style: &HatchStyle) -> Option<ContourStyle> {
+        match self {
+            ContourChoice::Off => None,
+            ContourChoice::On => Some(ContourStyle::band_edges(style)),
+        }
+    }
+
+    /// The occluding contour, for materials with no hatch style of their own.
+    fn silhouette(self) -> Option<ContourStyle> {
+        match self {
+            ContourChoice::Off => None,
+            ContourChoice::On => Some(ContourStyle::silhouette()),
+        }
+    }
+}
+
+fn main() -> std::io::Result<()> {
+    for (contours, file_name) in [
+        (ContourChoice::Off, "storefront.svg"),
+        (ContourChoice::On, "storefront-contoured.svg"),
+    ] {
+        let scene = build_scene(contours);
+        let camera = Camera::new()
+            .observation(
+                Camera::look_at(
+                    WPoint3::new(-7.8, -10.5, 3.9),
+                    WVec3::new(0.6, 0.2, 2.2),
+                    WVec3::new(0.0, 0.0, 1.0),
+                )
+                .expect("the storefront camera looks at the shop"),
+            )
+            .perspective(
+                Camera::perspective(41.0, WIDTH, HEIGHT, 0.1, 60.0)
+                    .expect("the storefront frustum is well formed"),
+            )
+            .build();
+
+        let rendering = scene.attach_camera(camera).render();
+        let out = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join(format!("renders/{file_name}"));
+        write_svg(&rendering, &out)?;
+        println!(
+            "storefront: {} strokes across {} pens -> {}",
+            rendering.strokes().len(),
+            rendering.pens().len(),
+            out.display()
+        );
+    }
     Ok(())
 }
 
-fn build_scene() -> Scene {
+fn build_scene(contours: ContourChoice) -> Scene {
     let base = HatchSpacing::try_new(0.22).expect("base spacing is positive");
     let tight = HatchSpacing::try_new(0.15).expect("tight spacing is positive");
     let sun = WPoint3::new(SUN.0, SUN.1, SUN.2);
@@ -74,7 +106,17 @@ fn build_scene() -> Scene {
             .hatch(style)
             .build()
     };
-    let ink_tonal = material(HatchStyle::tonal_crosshatch(base), 0);
+    // The dark facade: shadow-line contours at its own hatch's band edges,
+    // so the A/B shows contours composed with an existing hatch style.
+    let facade_style = HatchStyle::tonal_crosshatch(base);
+    let ink_tonal = Material::new()
+        .diffuse(1.0)
+        .specular(0.3)
+        .shininess(8.0)
+        .pen(PenId::new(0))
+        .hatch(facade_style.clone())
+        .maybe_contours(contours.band_edges(&facade_style))
+        .build();
     let ink_stochastic = material(HatchStyle::stochastic(base), 0);
     let wood_grain = HatchStyle::Tonal {
         passes: vec![
@@ -90,18 +132,26 @@ fn build_scene() -> Scene {
             },
         ],
     };
+    // The blade sign is walnut wood too: same treatment, its own band edges.
     let walnut_wood = Material::new()
         .diffuse(0.55)
         .specular(0.2)
         .shininess(6.0)
         .pen(PenId::new(1))
-        .hatch(wood_grain)
+        .hatch(wood_grain.clone())
+        .maybe_contours(contours.band_edges(&wood_grain))
         .build();
     let leaf_flow = material(HatchStyle::light_flow(sun, base), 2);
     let slate_tonal = material(HatchStyle::tonal_crosshatch(tight), 3);
     let pottery_flow = material(HatchStyle::light_flow(lamp, tight), 1);
     let ink_plain = Material::new().diffuse(1.0).build();
-    let walnut_plain = Material::new().diffuse(1.0).pen(PenId::new(1)).build();
+    // The thrown vase and bowl: unhatched, so their contour is the
+    // occluding silhouette rather than a tone band edge.
+    let walnut_plain = Material::new()
+        .diffuse(1.0)
+        .pen(PenId::new(1))
+        .maybe_contours(contours.silhouette())
+        .build();
 
     let mut shapes: Vec<DrawableShape> = Vec::new();
     let mut add = |shape: Arc<dyn Shape>, mat: &Material| {
