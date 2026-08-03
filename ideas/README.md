@@ -13,3 +13,5 @@ architecture, and what is unresolved.
   contours, curvature-driven hatching.
 - [multi-pen-color.md](multi-pen-color.md) — multicolor plots: pen layers,
   transmissive materials (the cyan-glass effect), and optical color mixing.
+- [shadow-outlines.md](shadow-outlines.md) — iso-tone contour extraction so
+  shadows get drawn boundaries, not just hatched fills.

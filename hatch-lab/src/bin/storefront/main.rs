@@ -12,6 +12,9 @@ use raydeon::{
 use std::path::PathBuf;
 use std::sync::Arc;
 
+mod detail;
+use detail::Awning;
+
 const WIDTH: usize = 1024;
 const HEIGHT: usize = 768;
 
@@ -98,6 +101,7 @@ fn build_scene() -> Scene {
     let leaf_flow = material(HatchStyle::light_flow(sun, base), 2);
     let slate_tonal = material(HatchStyle::tonal_crosshatch(tight), 3);
     let pottery_flow = material(HatchStyle::light_flow(lamp, tight), 1);
+    let ink_plain = Material::new().diffuse(1.0).build();
     let walnut_plain = Material::new().diffuse(1.0).pen(PenId::new(1)).build();
 
     let mut shapes: Vec<DrawableShape> = Vec::new();
@@ -199,14 +203,26 @@ fn build_scene() -> Scene {
         &ink_tonal,
     );
 
-    // Pottery on display, shaded toward the lamp.
-    for (center, radius) in [
-        ((0.0, 0.8, 1.2), 0.5),
-        ((1.5, 0.7, 1.05), 0.35),
-        ((2.9, 0.85, 1.32), 0.62),
-    ] {
-        add(Arc::new(sphere(center, radius)), &pottery_flow);
-    }
+    // The display: a thrown vase and bowl (ring contours), one glazed
+    // sphere shaded toward the lamp, and a stack of books with a bauble.
+    add(
+        Arc::new(detail::vase(WPoint3::new(0.15, 0.85, 0.7))),
+        &walnut_plain,
+    );
+    add(
+        Arc::new(detail::bowl(WPoint3::new(1.5, 0.7, 0.7))),
+        &walnut_plain,
+    );
+    add(Arc::new(sphere((2.9, 0.85, 1.32), 0.62)), &pottery_flow);
+    add(
+        Arc::new(cuboid((1.95, 0.95, 0.7), (2.42, 1.28, 0.79))),
+        &walnut_wood,
+    );
+    add(
+        Arc::new(cuboid((2.02, 1.0, 0.79), (2.36, 1.22, 0.86))),
+        &walnut_wood,
+    );
+    add(Arc::new(sphere((2.19, 1.11, 0.97), 0.11)), &walnut_plain);
 
     // Door, recessed with reveals; sill under the display window.
     add(
@@ -290,7 +306,9 @@ fn build_scene() -> Scene {
         &walnut_wood,
     );
 
-    add(Arc::new(Pavement), &ink_stochastic);
+    add(Arc::new(detail::pavement()), &ink_plain);
+    add(Arc::new(detail::cracks()), &ink_plain);
+    add(Arc::new(detail::brick_patches()), &ink_plain);
 
     Scene::new()
         .geometry(shapes)
@@ -337,83 +355,6 @@ fn cuboid(min: (f64, f64, f64), max: (f64, f64, f64)) -> AxisAlignedCuboid {
 
 fn sphere(center: (f64, f64, f64), radius: f64) -> Sphere {
     Sphere::new().center(center).radius(radius).build()
-}
-
-/// Sidewalk joint lines: drawn geometry with no collision, so they neither
-/// occlude nor shade.
-#[derive(Debug)]
-struct Pavement;
-
-impl Shape for Pavement {
-    fn collision_geometry(&self) -> Option<Vec<Arc<dyn CollisionGeometry>>> {
-        None
-    }
-
-    fn paths(&self, _cam: &Camera) -> Vec<LineSegment3D<WorldSpace>> {
-        // Slab joints across the sidewalk band, stopped at the curb.
-        let mut joints = Vec::new();
-        let mut x = -8.4;
-        while x < 7.5 {
-            joints.push(LineSegment3D::new_segment(
-                WPoint3::new(x, -3.2, 0.004),
-                WPoint3::new(x, -0.02, 0.004),
-            ));
-            x += 1.6;
-        }
-        for y in [-3.2, -3.38] {
-            joints.push(LineSegment3D::new_segment(
-                WPoint3::new(-9.3, y, 0.004),
-                WPoint3::new(7.8, y, 0.004),
-            ));
-        }
-        joints
-    }
-
-    fn hatch_surfaces(&self) -> Vec<HatchSurface> {
-        Vec::new()
-    }
-}
-
-/// A sloped awning canvas whose stripes are drawn geometry, not hatching.
-#[derive(Debug)]
-struct Awning {
-    quad: Quad,
-    stripe_step: f64,
-}
-
-impl Awning {
-    fn new(origin: WPoint3, slope: WVec3, width: f64, stripe_step: f64) -> Self {
-        let quad = Quad::new()
-            .origin(origin)
-            .basis([slope.normalize(), WVec3::new(1.0, 0.0, 0.0)])
-            .dims([slope.length(), width])
-            .build();
-        Self { quad, stripe_step }
-    }
-}
-
-impl Shape for Awning {
-    fn collision_geometry(&self) -> Option<Vec<Arc<dyn CollisionGeometry>>> {
-        self.quad.collision_geometry()
-    }
-
-    fn paths(&self, cam: &Camera) -> Vec<LineSegment3D<WorldSpace>> {
-        let lift = self.quad.basis[0].cross(self.quad.basis[1]) * 0.008;
-        let [slope_len, width] = self.quad.dims;
-        let mut paths = self.quad.paths(cam);
-        let mut v = self.stripe_step;
-        while v < width {
-            let top = self.quad.origin + self.quad.basis[1] * v + lift;
-            let bottom = top + self.quad.basis[0] * slope_len;
-            paths.push(LineSegment3D::new_segment(top, bottom));
-            v += self.stripe_step;
-        }
-        paths
-    }
-
-    fn hatch_surfaces(&self) -> Vec<HatchSurface> {
-        self.quad.hatch_surfaces()
-    }
 }
 
 fn write_svg(rendering: &Rendering, out: &PathBuf) -> std::io::Result<()> {
