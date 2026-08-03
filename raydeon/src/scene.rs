@@ -198,19 +198,24 @@ impl Scene {
     }
 
     /// Returns whether or not the given camera has a clear line of sight to a given point.
+    ///
+    /// A point is occluded iff the nearest hit along the ray toward the eye
+    /// lies strictly BETWEEN the point and the eye; a hit at or beyond the
+    /// eye (e.g. geometry behind the camera) never occludes (invariant 21).
     fn visible(&self, from: WPoint3, point: WPoint3) -> bool {
         let v = from - point;
         let r = Ray::new(point, v.normalize());
 
         match self.intersects(r) {
-            Some(hit_shape) => {
-                let diff = (hit_shape.hit_data.dist_to - v.length()).abs();
-                diff < 1.0e-1
-            }
+            Some(hit_shape) => hit_shape.hit_data.dist_to >= v.length() - OCCLUSION_TOL,
             None => true,
         }
     }
 }
+
+/// Tolerance on the eye-distance comparison in `Scene::visible`: a hit within
+/// this margin of the eye is treated as "at the eye", not an occluder.
+const OCCLUSION_TOL: f64 = 1.0e-1;
 
 #[derive(Debug)]
 pub struct SceneCamera<'s> {
@@ -576,9 +581,38 @@ fn screen_hatch_stroke(segment: LineSegment2D<CameraSpace>) -> Stroke {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::shapes::AxisAlignedCuboid;
 
     fn unit_page() -> euclid::Box2D<f64, CameraSpace> {
         euclid::Box2D::new(Point2::new(0.0, 0.0), Point2::new(10.0, 10.0))
+    }
+
+    fn cube_scene(center: f64) -> Scene {
+        let cuboid = AxisAlignedCuboid::new()
+            .min((center - 0.5, -0.5, -0.5))
+            .max((center + 0.5, 0.5, 0.5))
+            .build();
+        Scene::new()
+            .geometry(vec![Arc::new(cuboid) as Arc<dyn Shape>])
+            .build()
+    }
+
+    #[test]
+    fn an_occluder_between_the_point_and_the_eye_hides_it() {
+        let scene = cube_scene(5.0);
+        let point = WPoint3::new(0.0, 0.0, 0.0);
+        let eye = WPoint3::new(10.0, 0.0, 0.0);
+
+        assert!(!scene.visible(eye, point));
+    }
+
+    #[test]
+    fn geometry_behind_the_eye_does_not_occlude() {
+        let scene = cube_scene(20.0);
+        let point = WPoint3::new(0.0, 0.0, 0.0);
+        let eye = WPoint3::new(10.0, 0.0, 0.0);
+
+        assert!(scene.visible(eye, point));
     }
 
     #[test]

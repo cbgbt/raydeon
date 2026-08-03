@@ -131,6 +131,18 @@ impl ParentNode {
                 rd = ray.dir.z;
             }
         };
+        if rd == 0.0 {
+            // The ray is parallel to the split plane along this axis: it
+            // never crosses the plane, so it lives entirely on whichever
+            // side contains `rp` (on-plane points fall to the left, matching
+            // the tie-break used when rd != 0 and rp == self.point).
+            let side = if rp <= self.point {
+                &self.left
+            } else {
+                &self.right
+            };
+            return side.intersects(ray, tmin, tmax);
+        }
         let tsplit = (self.point - rp) / rd;
         let left_first = (rp < self.point) || (rp == self.point && rd <= 0.0);
 
@@ -397,28 +409,29 @@ mod tests {
             .collect()
     }
 
-    fn nearest_hit_by_brute_force(collidables: &[Collidable], ray: Ray) -> Option<f64> {
+    fn nearest_hit_by_brute_force(
+        collidables: &[Collidable],
+        ray: Ray,
+    ) -> Option<(f64, Arc<dyn Shape>)> {
         collidables
             .iter()
-            .filter_map(|collidable| collidable.collision.hit_by(&ray))
-            .map(|hit| hit.dist_to)
-            .min_by(f64::total_cmp)
+            .filter_map(|collidable| {
+                collidable
+                    .collision
+                    .hit_by(&ray)
+                    .map(|hit| (hit.dist_to, Arc::clone(collidable.shape.geometry())))
+            })
+            .min_by(|(a, _), (b, _)| a.total_cmp(b))
     }
 
     fn cuboid_strategy() -> impl Strategy<Value = CuboidSpec> {
         (-10.0..10.0f64, -10.0..10.0f64, -10.0..10.0f64, 0.5..3.0f64)
     }
 
-    /// Rays with an axis-aligned direction component sit exactly on a split
-    /// plane's degenerate case; they are not what this test is about.
+    /// Ray directions span the full cube, including axis-aligned components
+    /// (invariant 22): `ParentNode::intersects` must be total over rd == 0.
     fn ray_strategy() -> impl Strategy<Value = Ray> {
-        let component = (-1.0..1.0f64).prop_map(|v| {
-            if v.abs() < 0.05 {
-                0.05_f64.copysign(v)
-            } else {
-                v
-            }
-        });
+        let component = -1.0..1.0f64;
         (
             (-20.0..20.0f64, -20.0..20.0f64, -20.0..20.0f64),
             (component.clone(), component.clone(), component),
@@ -437,19 +450,31 @@ mod tests {
             let collidables = collidables(&specs);
             let tree = BVHTree::new(&collidables);
 
-            let from_tree = tree.intersects(ray).map(|hit| hit.hit_data.dist_to);
+            let from_tree = tree
+                .intersects(ray)
+                .map(|hit| (hit.hit_data.dist_to, Arc::clone(hit.hit_shape.geometry())));
             let brute_force = nearest_hit_by_brute_force(&collidables, ray);
 
             match (from_tree, brute_force) {
-                (Some(tree_dist), Some(brute_dist)) => {
+                (Some((tree_dist, tree_shape)), Some((brute_dist, brute_shape))) => {
                     prop_assert!(
                         (tree_dist - brute_dist).abs() < 1e-9,
                         "hierarchy found a hit at {} where brute force found {}",
                         tree_dist,
                         brute_dist
                     );
+                    prop_assert!(
+                        Arc::ptr_eq(&tree_shape, &brute_shape),
+                        "hierarchy hit a different shape than brute force"
+                    );
                 }
-                (tree_hit, brute_hit) => prop_assert_eq!(tree_hit, brute_hit),
+                (None, None) => {}
+                (tree_hit, brute_hit) => prop_assert!(
+                    false,
+                    "hierarchy/brute-force disagreed on hit presence: tree={:?} brute={:?}",
+                    tree_hit.map(|(d, _)| d),
+                    brute_hit.map(|(d, _)| d),
+                ),
             }
         }
     }

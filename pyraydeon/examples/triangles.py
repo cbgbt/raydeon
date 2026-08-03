@@ -19,7 +19,7 @@ class CustomTriangle(Geometry):
     def __init__(self, p1: Point3, p2: Point3, p3: Point3) -> None:
         self.tri = Tri(p1, p2, p3)
 
-    def collision_geomery(self) -> list["CustomTriangle"]:
+    def collision_geometry(self) -> list["CustomTriangle"]:
         return [self]
 
     def hit_by(self, ray: Ray) -> HitData | None:

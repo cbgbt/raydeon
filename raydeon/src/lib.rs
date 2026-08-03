@@ -97,4 +97,11 @@ impl DrawableShape {
     pub fn material(&self) -> Option<&Material> {
         self.material.as_ref()
     }
+
+    /// The underlying geometry, exposed in-crate so tests can assert hit
+    /// identity via `Arc::ptr_eq` (bvh.rs's brute-force equivalence pin).
+    #[cfg(test)]
+    pub(crate) fn geometry(&self) -> &Arc<dyn Shape> {
+        &self.geometry
+    }
 }
