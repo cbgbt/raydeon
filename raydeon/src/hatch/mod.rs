@@ -6,12 +6,14 @@
 //! engine here decides which lines land where, and how the scene's lighting
 //! erodes them.
 
+pub mod contour;
 pub mod style;
 pub mod surface;
 
 pub(crate) mod jitter;
 mod lines;
 
+pub use contour::{ContourField, ContourResolution, ContourStyle};
 pub use style::{HatchCoverage, HatchSpacing, HatchStyle, TonalPass, ToneThreshold};
 pub use surface::{
     FaceBox, FacePoint, FaceSpace, HatchSurface, PlanarSurface, PlanarSurfaceError, SphereSurface,

@@ -13,6 +13,7 @@ pub type Stroke = (Point2<CameraSpace>, Point2<CameraSpace>);
 pub struct StrategyRender {
     pub outline: Vec<Stroke>,
     pub hatch: Vec<Stroke>,
+    pub contour: Vec<Stroke>,
 }
 
 /// Distance between hatch lines, in world units.
@@ -78,12 +79,18 @@ fn spacing() -> HatchSpacing {
 fn split(rendering: &Rendering) -> StrategyRender {
     let mut outline = Vec::new();
     let mut hatch = Vec::new();
+    let mut contour = Vec::new();
     for stroke in rendering.strokes() {
         let points = (stroke.p1, stroke.p2);
         match stroke.kind {
             StrokeKind::Outline => outline.push(points),
             StrokeKind::Hatch => hatch.push(points),
+            StrokeKind::Contour => contour.push(points),
         }
     }
-    StrategyRender { outline, hatch }
+    StrategyRender {
+        outline,
+        hatch,
+        contour,
+    }
 }

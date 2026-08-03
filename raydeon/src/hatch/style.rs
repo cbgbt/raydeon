@@ -113,6 +113,19 @@ impl HatchStyle {
             coverage: coverage(0.95),
         }
     }
+
+    /// The tone levels at which this style's appearance steps discretely:
+    /// `Tonal`'s own pass thresholds, `LightFlow`'s single cross threshold, or
+    /// nothing for `Stochastic`, which has no discrete band edges.
+    pub fn band_thresholds(&self) -> Vec<ToneThreshold> {
+        match self {
+            HatchStyle::Tonal { passes } => passes.iter().map(|pass| pass.threshold).collect(),
+            HatchStyle::Stochastic { .. } => Vec::new(),
+            HatchStyle::LightFlow {
+                cross_threshold, ..
+            } => vec![*cross_threshold],
+        }
+    }
 }
 
 fn pass(degrees: f64, spacing: HatchSpacing, cutoff: f64) -> TonalPass {
@@ -174,6 +187,33 @@ mod tests {
                 "later passes must apply to darker tones"
             );
         }
+    }
+
+    #[test]
+    fn band_thresholds_reports_each_style_familys_step_edges() {
+        let HatchStyle::Tonal { passes } = HatchStyle::tonal_crosshatch(spacing()) else {
+            panic!("the tonal preset is a tonal style");
+        };
+        let expected: Vec<ToneThreshold> = passes.iter().map(|pass| pass.threshold).collect();
+        assert_eq!(
+            HatchStyle::tonal_crosshatch(spacing()).band_thresholds(),
+            expected
+        );
+
+        assert!(HatchStyle::stochastic(spacing())
+            .band_thresholds()
+            .is_empty());
+
+        let HatchStyle::LightFlow {
+            cross_threshold, ..
+        } = HatchStyle::light_flow(WPoint3::new(0.0, 0.0, 5.0), spacing())
+        else {
+            panic!("the light flow preset is a light flow style");
+        };
+        assert_eq!(
+            HatchStyle::light_flow(WPoint3::new(0.0, 0.0, 5.0), spacing()).band_thresholds(),
+            vec![cross_threshold]
+        );
     }
 
     #[test]

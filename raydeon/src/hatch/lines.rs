@@ -21,7 +21,11 @@ const LINE_LIFT: f64 = 0.006;
 const SAMPLE_LIFT: f64 = 0.005;
 
 /// Distance between illumination samples along a hatch line, in world units.
-const SAMPLE_LEN: f64 = 0.16;
+///
+/// The one const which owns "tone-field bandwidth": the contour engine's
+/// default `ContourResolution` mints from this too, so retuning it cannot
+/// silently diverge hatching and contour sampling.
+pub(crate) const SAMPLE_LEN: f64 = 0.16;
 
 /// Below this a parametric interval is too short to draw.
 const MIN_INTERVAL: f64 = 1.0e-6;

@@ -19,9 +19,10 @@ fn main() -> std::io::Result<()> {
         let out_path = out_dir.join(format!("{name}.svg"));
         svg_out::write(&render, &out_path)?;
         println!(
-            "{name}: {} outline strokes, {} hatch strokes in {elapsed:.2?} -> {}",
+            "{name}: {} outline strokes, {} hatch strokes, {} contour strokes in {elapsed:.2?} -> {}",
             render.outline.len(),
             render.hatch.len(),
+            render.contour.len(),
             out_path.display(),
         );
     }

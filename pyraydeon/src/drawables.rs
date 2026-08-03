@@ -163,6 +163,7 @@ impl Stroke {
 pub(crate) enum StrokeKind {
     Outline,
     Hatch,
+    Contour,
 }
 
 impl From<raydeon::StrokeKind> for StrokeKind {
@@ -170,6 +171,7 @@ impl From<raydeon::StrokeKind> for StrokeKind {
         match value {
             raydeon::StrokeKind::Outline => StrokeKind::Outline,
             raydeon::StrokeKind::Hatch => StrokeKind::Hatch,
+            raydeon::StrokeKind::Contour => StrokeKind::Contour,
         }
     }
 }

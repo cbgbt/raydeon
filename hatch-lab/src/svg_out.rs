@@ -19,7 +19,8 @@ pub fn write(render: &StrategyRender, out_path: &Path) -> std::io::Result<()> {
                 .set("fill", "white"),
         )
         .add(stroke_group(&render.outline, 2.4))
-        .add(stroke_group(&render.hatch, 1.4));
+        .add(stroke_group(&render.hatch, 1.4))
+        .add(stroke_group(&render.contour, 1.0));
     svg::save(out_path, &doc)
 }
 

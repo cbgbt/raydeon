@@ -17,6 +17,7 @@ use std::fmt::Debug;
 use std::sync::Arc;
 
 pub use camera::{Camera, CameraOptions, LookAtError, Observation, Perspective, PerspectiveError};
+pub use hatch::contour::{ContourField, ContourResolution, ContourStyle};
 pub use hatch::style::{HatchCoverage, HatchSpacing, HatchStyle, TonalPass, ToneThreshold};
 pub use hatch::surface::{
     FaceBox, FacePoint, FaceSpace, HatchSurface, PlanarSurface, PlanarSurfaceError, SphereSurface,

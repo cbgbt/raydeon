@@ -380,6 +380,7 @@ fn write_svg(rendering: &Rendering, out: &PathBuf) -> std::io::Result<()> {
             .set("stroke-linecap", "round");
         let mut outlines = svg::node::element::Group::new().set("stroke-width", 2.3);
         let mut hatches = svg::node::element::Group::new().set("stroke-width", 1.35);
+        let mut contours = svg::node::element::Group::new().set("stroke-width", 1.0);
         for stroke in rendering.strokes_for_pen(pen) {
             let line = svg::node::element::Line::new()
                 .set("x1", stroke.p1.x)
@@ -389,9 +390,10 @@ fn write_svg(rendering: &Rendering, out: &PathBuf) -> std::io::Result<()> {
             match stroke.kind {
                 StrokeKind::Outline => outlines = outlines.add(line),
                 StrokeKind::Hatch => hatches = hatches.add(line),
+                StrokeKind::Contour => contours = contours.add(line),
             }
         }
-        group = group.add(outlines).add(hatches);
+        group = group.add(outlines).add(hatches).add(contours);
         doc = doc.add(group);
     }
     svg::save(out, &doc)

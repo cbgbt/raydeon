@@ -28,6 +28,8 @@ pub enum StrokeKind {
     Outline,
     /// Shading strokes.
     Hatch,
+    /// Iso-contour strokes: per-material tone and silhouette outlines.
+    Contour,
 }
 
 /// One camera-space pen stroke of the finished drawing.

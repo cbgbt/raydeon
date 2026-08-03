@@ -1,4 +1,4 @@
-use crate::hatch::HatchStyle;
+use crate::hatch::{ContourStyle, HatchStyle};
 use crate::stroke::PenId;
 use bon::Builder;
 
@@ -19,4 +19,18 @@ pub struct Material {
     /// How this material shades itself, if it does. Without a style the
     /// material draws outlines only.
     pub hatch: Option<HatchStyle>,
+    /// Which iso-contours this material draws over its hatch surfaces, if
+    /// any. Off by default: a material without a style draws no `Contour`
+    /// strokes.
+    pub contours: Option<ContourStyle>,
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn a_material_draws_no_contours_unless_it_opts_in() {
+        assert_eq!(Material::new().build().contours, None);
+    }
 }
