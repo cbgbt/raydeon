@@ -10,6 +10,7 @@ pub(crate) use primitive::{AxisAlignedCuboid, Tri};
 
 use crate::camera::Camera;
 use crate::drawables::{raydeon_geometry_from_py_object, DrawableShape};
+use crate::hatch::{hatch_surface_from_py, hatch_surface_into_py};
 use crate::material::Material;
 use crate::ray::{HitData, Ray, AABB3};
 use crate::scene::LineSegment3D;
@@ -74,6 +75,21 @@ impl Geometry {
                 let paths = geom.paths(&cam.0);
                 paths.into_iter().map(Into::into).collect()
             }),
+            InnerGeometry::Py => Vec::new(),
+        }
+    }
+
+    /// The surfaces this shape offers up for world-space hatching.
+    ///
+    /// A shape written in Python offers none until it says otherwise, so
+    /// hatching is something a Python shape opts in to by overriding this.
+    fn hatch_surfaces(&self, py: Python) -> Vec<PyObject> {
+        match &self.geom {
+            InnerGeometry::Native(geom) => geom
+                .hatch_surfaces()
+                .into_iter()
+                .map(|surface| hatch_surface_into_py(py, surface))
+                .collect(),
             InnerGeometry::Py => Vec::new(),
         }
     }
@@ -197,49 +213,74 @@ impl PythonGeometry {
     }
 }
 
+/// What a Python shape answered, or nothing at all.
+///
+/// A shape which cannot answer a question about itself has its complaint
+/// handed to Python's unraisable hook — the render has no caller to fail
+/// back to — and the answer is read as an absence.
+fn answered<T>(py: Python<'_>, obj: &Bound<'_, PyAny>, result: PyResult<T>) -> Option<T> {
+    match result {
+        Ok(answer) => Some(answer),
+        Err(err) => {
+            err.write_unraisable_bound(py, Some(obj));
+            None
+        }
+    }
+}
+
 impl raydeon::Shape for PythonGeometry {
     fn collision_geometry(&self) -> Option<Vec<Arc<dyn raydeon::CollisionGeometry>>> {
-        let collision_geometry: Option<_> = Python::with_gil(|py| {
+        Python::with_gil(|py| {
             let inner = self.slf.bind(py);
-            let call_result = inner.call_method1("collision_geometry", ()).ok()?;
+            let call_result = inner.call_method0("collision_geometry").ok()?;
 
-            let nullable: Option<Bound<'_, PyAny>> = call_result.extract().unwrap();
-            let collision_iter = nullable?.iter().unwrap();
+            let nullable = answered(py, inner, call_result.extract::<Option<Bound<'_, PyAny>>>())?;
+            let collision_iter = answered(py, inner, nullable?.iter())?;
 
-            let geometry: Vec<_> = collision_iter
+            let geometry = collision_iter
                 .map(|obj| {
                     Ok(
                         Arc::new(PythonGeometry::as_collision_geometry(obj?.into_py(py)))
                             as Arc<dyn raydeon::CollisionGeometry>,
                     )
                 })
-                .collect::<PyResult<_>>()
-                .unwrap();
-
-            Some(geometry)
-        });
-        collision_geometry
+                .collect::<PyResult<Vec<_>>>();
+            answered(py, inner, geometry)
+        })
     }
 
-    /// Python-defined shapes opt in to hatching by handing over their own
-    /// surfaces, which they cannot do until the bridge for that lands.
     fn hatch_surfaces(&self) -> Vec<raydeon::HatchSurface> {
-        Vec::new()
+        Python::with_gil(|py| {
+            let inner = self.slf.bind(py);
+            let surfaces = inner
+                .call_method0("hatch_surfaces")
+                .and_then(|call_result| call_result.extract::<Option<Vec<Bound<'_, PyAny>>>>())
+                .and_then(|offered| {
+                    offered
+                        .unwrap_or_default()
+                        .iter()
+                        .map(hatch_surface_from_py)
+                        .collect::<PyResult<Vec<_>>>()
+                });
+            answered(py, inner, surfaces).unwrap_or_default()
+        })
     }
 
     fn paths(&self, cam: &raydeon::Camera) -> Vec<raydeon::path::LineSegment3D<WorldSpace>> {
-        let segments: Option<_> = Python::with_gil(|py| {
+        Python::with_gil(|py| {
             let inner = self.slf.bind(py);
             let cam = Camera::from(cam.clone());
-            let call_result = inner.call_method1("paths", (cam,)).unwrap();
+            let segments = inner
+                .call_method1("paths", (cam,))
+                .and_then(|call_result| call_result.extract::<Option<Vec<LineSegment3D>>>());
 
-            let segments = call_result
-                .extract::<Option<Vec<LineSegment3D>>>()
-                .unwrap()?;
-
-            Some(segments.into_iter().map(Into::into).collect())
-        });
-        segments.unwrap_or_default()
+            answered(py, inner, segments)
+                .flatten()
+                .unwrap_or_default()
+                .into_iter()
+                .map(Into::into)
+                .collect()
+        })
     }
 }
 
@@ -251,23 +292,23 @@ impl raydeon::CollisionGeometry for PythonGeometry {
         Python::with_gil(|py| {
             let inner = self.slf.bind(py);
             let ray = Ray::from(*ray);
-            let call_result = inner.call_method1("hit_by", (ray,)).unwrap();
+            let hit = inner
+                .call_method1("hit_by", (ray,))
+                .and_then(|call_result| call_result.extract::<Option<HitData>>());
 
-            call_result
-                .extract::<Option<HitData>>()
-                .ok()?
-                .map(|hit| hit.0)
+            answered(py, inner, hit).flatten().map(|hit| hit.0)
         })
     }
 
     fn bounding_box(&self) -> Option<raydeon::AABB3<WorldSpace>> {
         Python::with_gil(|py| {
             let inner = self.slf.bind(py);
-            let call_result = inner.call_method1("bounding_box", ()).unwrap();
+            let bounds = inner
+                .call_method0("bounding_box")
+                .and_then(|call_result| call_result.extract::<Option<AABB3>>());
 
-            call_result
-                .extract::<Option<AABB3>>()
-                .ok()?
+            answered(py, inner, bounds)
+                .flatten()
                 .map(|aabb| aabb.0.cast_unit())
         })
     }

@@ -1,22 +1,34 @@
 import svg
 
-from pyraydeon import Camera, Point3, Scene, Tri, Vec3, Geometry
+from pyraydeon import (
+    AABB3,
+    Camera,
+    Geometry,
+    HitData,
+    LineSegment3D,
+    Point3,
+    Ray,
+    Scene,
+    Stroke,
+    Tri,
+    Vec3,
+)
 
 
 class CustomTriangle(Geometry):
-    def __init__(self, p1, p2, p3):
+    def __init__(self, p1: Point3, p2: Point3, p3: Point3) -> None:
         self.tri = Tri(p1, p2, p3)
 
-    def collision_geomery(self):
+    def collision_geomery(self) -> list["CustomTriangle"]:
         return [self]
 
-    def hit_by(self, ray):
+    def hit_by(self, ray: Ray) -> HitData | None:
         return self.tri.hit_by(ray)
 
-    def paths(self, cam):
+    def paths(self, cam: Camera) -> list[LineSegment3D]:
         return self.tri.paths(cam)
 
-    def bounding_box(self):
+    def bounding_box(self) -> AABB3:
         return self.tri.bounding_box()
 
 
@@ -47,7 +59,7 @@ zfar = 10.0
 
 cam = Camera().look_at(eye, focus, up).perspective(fovy, width, height, znear, zfar)
 
-paths = scene.render(cam)
+strokes: list[Stroke] = scene.render(cam)
 
 canvas = svg.SVG(
     width="8in",
@@ -63,14 +75,14 @@ backing_rect = svg.Rect(
 )
 svg_lines = [
     svg.Line(
-        x1=f"{path.p1[0]}",
-        y1=f"{path.p1[1]}",
-        x2=f"{path.p2[0]}",
-        y2=f"{path.p2[1]}",
+        x1=f"{stroke.p1[0]}",
+        y1=f"{stroke.p1[1]}",
+        x2=f"{stroke.p2[0]}",
+        y2=f"{stroke.p2[1]}",
         stroke_width="0.7mm",
         stroke="black",
     )
-    for path in paths
+    for stroke in strokes
 ]
 line_group = svg.G(transform=f"translate(0, {height}) scale(1, -1)", elements=svg_lines)
 canvas.elements = [backing_rect, line_group]

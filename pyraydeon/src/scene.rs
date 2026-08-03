@@ -47,24 +47,29 @@ impl Scene {
         Ok(Self { scene })
     }
 
-    fn render(&self, py: Python, camera: &Camera) -> Vec<Stroke> {
+    /// Draws the scene: shape outlines plus the hatching materials ask for.
+    ///
+    /// `seed` salts the position-hashed jitter of the hatching, so the same
+    /// scene and seed always draw the same strokes in the same order.
+    #[pyo3(signature = (camera, *, seed=0))]
+    fn render(&self, py: Python, camera: &Camera, seed: u64) -> Vec<Stroke> {
         py.allow_threads(|| {
-            let cam = self.scene.attach_camera(camera.0.clone());
+            let cam = self.scene.attach_camera(camera.0.clone()).with_seed(seed);
             cam.render().strokes().iter().map(Into::into).collect()
         })
     }
 
-    #[pyo3(signature = (camera, seed=None))]
-    fn render_with_lighting(&self, py: Python, camera: &Camera, seed: Option<u64>) -> Vec<Stroke> {
+    /// Draws the scene, then shades the whole image with screen-space
+    /// hatching laid out on the page rather than on the surfaces.
+    #[pyo3(signature = (camera, *, seed=0))]
+    fn render_with_screen_hatching(&self, py: Python, camera: &Camera, seed: u64) -> Vec<Stroke> {
         py.allow_threads(|| {
-            let cam = self.scene.attach_camera(camera.0.clone());
-            let cam = if let Some(seed) = seed {
-                cam.with_seed(seed)
-            } else {
-                cam
-            };
-            let render_result = cam.render_with_screen_hatching();
-            render_result.strokes().iter().map(Into::into).collect()
+            let cam = self.scene.attach_camera(camera.0.clone()).with_seed(seed);
+            cam.render_with_screen_hatching()
+                .strokes()
+                .iter()
+                .map(Into::into)
+                .collect()
         })
     }
 

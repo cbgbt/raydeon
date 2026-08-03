@@ -10,12 +10,14 @@ import svg
 from pyraydeon import (
     AABB3,
     Camera,
+    CollisionGeometry,
     Geometry,
     HitData,
     LineSegment3D,
-    Scene,
-    CollisionGeometry,
     Plane,
+    Ray,
+    Scene,
+    Stroke,
 )
 
 
@@ -28,7 +30,7 @@ class RectPrism(Geometry):
         up: np.ndarray,
         height: float,
         depth: float,
-    ):
+    ) -> None:
         up = up / np.linalg.norm(up)
         right = right / np.linalg.norm(right)
         fwd = np.cross(up, right)
@@ -83,20 +85,18 @@ class RectPrism(Geometry):
             [3, 0, 4, 7],
         ]
 
-    def __repr__(self):
+    def __repr__(self) -> str:
         return f"RectPrism(basis='[{self.right}, {self.up}, {self.fwd}]', dims='[{self.width}, {self.height}, {self.depth}]')"
 
-    def collision_geometry(self):
+    def collision_geometry(self) -> list[CollisionGeometry]:
         return [PyQuad(self.vertices[face]) for face in self.faces]
 
-    def paths(self, cam):
-        edges = set(
-            [
-                tuple(sorted((face[i], face[(i + 1) % len(face)])))
-                for face in self.faces
-                for i in range(len(face))
-            ]
-        )
+    def paths(self, cam: Camera) -> list[LineSegment3D]:
+        edges = {
+            tuple(sorted((face[i], face[(i + 1) % len(face)])))
+            for face in self.faces
+            for i in range(len(face))
+        }
         paths = [
             LineSegment3D(self.path_vertices[edge[0]], self.path_vertices[edge[1]])
             for edge in edges
@@ -105,17 +105,17 @@ class RectPrism(Geometry):
 
 
 class PyQuad(CollisionGeometry):
-    def __init__(self, vertices):
+    def __init__(self, vertices: np.ndarray) -> None:
         self.vertices = vertices
         self.plane = self.compute_plane(vertices)
 
-    def compute_plane(self, points):
+    def compute_plane(self, points: np.ndarray) -> Plane:
         p1, p2, p3 = points[:3]
         normal = np.cross(p2 - p1, p3 - p1)
         normal /= np.linalg.norm(normal)
         return Plane(p1, normal)
 
-    def is_point_in_face(self, point):
+    def is_point_in_face(self, point: np.ndarray) -> bool:
         edge1 = self.vertices[1] - self.vertices[0]
         edge2 = self.vertices[3] - self.vertices[0]
         v = point - self.vertices[0]
@@ -123,12 +123,12 @@ class PyQuad(CollisionGeometry):
         u2 = np.dot(v, edge2) / np.dot(edge2, edge2)
         return 0 <= u1 <= 1 and 0 <= u2 <= 1
 
-    def hit_by(self, ray) -> HitData | None:
+    def hit_by(self, ray: Ray) -> HitData | None:
         intersection = self.plane.hit_by(ray)
         if intersection is not None and self.is_point_in_face(intersection.hit_point):
             return intersection
 
-    def bounding_box(self):
+    def bounding_box(self) -> AABB3:
         my_min = np.minimum.reduce(self.vertices)
         my_max = np.maximum.reduce(self.vertices)
         return AABB3(my_min, my_max)
@@ -190,7 +190,7 @@ zfar = 10.0
 
 cam = Camera().look_at(eye, focus, up).perspective(fovy, width, height, znear, zfar)
 
-paths = scene.render(cam)
+strokes: list[Stroke] = scene.render(cam)
 
 canvas = svg.SVG(
     width="8in",
@@ -206,14 +206,14 @@ backing_rect = svg.Rect(
 )
 svg_lines = [
     svg.Line(
-        x1=f"{path.p1[0]}",
-        y1=f"{path.p1[1]}",
-        x2=f"{path.p2[0]}",
-        y2=f"{path.p2[1]}",
+        x1=f"{stroke.p1[0]}",
+        y1=f"{stroke.p1[1]}",
+        x2=f"{stroke.p2[0]}",
+        y2=f"{stroke.p2[1]}",
         stroke_width="0.7mm",
         stroke="black",
     )
-    for path in paths
+    for stroke in strokes
 ]
 line_group = svg.G(transform=f"translate(0, {height}) scale(1, -1)", elements=svg_lines)
 canvas.elements = [backing_rect, line_group]

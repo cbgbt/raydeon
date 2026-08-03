@@ -133,7 +133,7 @@ impl Plane {
     }
 }
 
-#[pyclass(frozen, extends=CollisionGeometry, subclass)]
+#[pyclass(frozen, extends=Geometry, subclass)]
 pub(crate) struct Sphere(pub(crate) Arc<raydeon::shapes::Sphere>);
 
 impl ::std::ops::Deref for Sphere {
@@ -153,7 +153,7 @@ impl From<Arc<raydeon::shapes::Sphere>> for Sphere {
 #[pymethods]
 impl Sphere {
     #[new]
-    fn new(center: &Bound<'_, PyAny>, radius: f64) -> PyResult<(Self, CollisionGeometry)> {
+    fn new(center: &Bound<'_, PyAny>, radius: f64) -> PyResult<(Self, Geometry)> {
         let center: Point3 = center.try_into()?;
 
         let shape = Arc::new(
@@ -162,8 +162,7 @@ impl Sphere {
                 .radius(radius)
                 .build(),
         );
-        let geom =
-            CollisionGeometry::native(Arc::clone(&shape) as Arc<dyn raydeon::CollisionGeometry>);
+        let geom = Geometry::native(Arc::clone(&shape) as Arc<dyn raydeon::Shape>);
         Ok((Self(shape), geom))
     }
 

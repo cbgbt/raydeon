@@ -3,6 +3,7 @@ use std::sync::Arc;
 use numpy::{Ix1, PyArray};
 use pyo3::prelude::*;
 
+use crate::camera::Camera;
 use crate::material::Material;
 use crate::shapes::Geometry;
 
@@ -81,8 +82,8 @@ impl DrawableShape {
         self.pyobj.call_method0(py, "collision_geometry")
     }
 
-    fn paths(&self, py: Python) -> PyResult<PyObject> {
-        self.pyobj.call_method0(py, "paths")
+    fn paths(&self, py: Python, cam: &Camera) -> PyResult<PyObject> {
+        self.pyobj.call_method1(py, "paths", (cam.clone(),))
     }
 
     fn __repr__(slf: &Bound<'_, Self>) -> PyResult<String> {

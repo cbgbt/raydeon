@@ -56,6 +56,12 @@ impl HitData {
         self.0.dist_to
     }
 
+    /// The surface normal where the ray struck.
+    #[getter]
+    fn normal<'py>(&self, py: Python<'py>) -> Bound<'py, PyArray<f64, Ix1>> {
+        PyArray::from_slice_bound(py, &self.0.normal.to_array())
+    }
+
     fn __repr__(slf: &Bound<'_, Self>) -> PyResult<String> {
         let class_name = slf.get_type().qualname()?;
         Ok(format!("{}<{:?}>", class_name, slf.borrow().0))

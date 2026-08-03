@@ -1,17 +1,75 @@
 use pyo3::prelude::*;
 
+use crate::hatch::HatchStyle;
+
+pywrap!(PenId, raydeon::PenId);
+
+#[pymethods]
+impl PenId {
+    /// The pen which draws a material's strokes, numbered from zero.
+    #[new]
+    fn new(value: usize) -> Self {
+        raydeon::PenId::new(value).into()
+    }
+
+    #[getter]
+    fn value(&self) -> usize {
+        self.0.value()
+    }
+
+    fn __eq__(&self, other: &Self) -> bool {
+        self.0 == other.0
+    }
+
+    fn __hash__(&self) -> usize {
+        self.0.value()
+    }
+
+    fn __repr__(slf: &Bound<'_, Self>) -> PyResult<String> {
+        let class_name = slf.get_type().qualname()?;
+        Ok(format!("{}<{:?}>", class_name, slf.borrow().0))
+    }
+}
+
+/// A pen named either by its number or by identity.
+#[derive(FromPyObject)]
+enum Pen {
+    Id(PenId),
+    Number(usize),
+}
+
+impl Pen {
+    fn parse(self) -> raydeon::PenId {
+        match self {
+            Pen::Id(pen) => pen.0,
+            Pen::Number(value) => raydeon::PenId::new(value),
+        }
+    }
+}
+
 pywrap!(Material, raydeon::material::Material);
 
 #[pymethods]
 impl Material {
+    /// How a surface takes light, and how it draws itself.
+    ///
+    /// An omitted `pen` plots with pen zero, and an omitted `hatch` draws
+    /// outlines only.
     #[new]
-    #[pyo3(signature = (diffuse=0.0, specular=0.0, shininess=0.0, pen=0))]
-    fn new(diffuse: f64, specular: f64, shininess: f64, pen: usize) -> PyResult<Self> {
+    #[pyo3(signature = (diffuse=0.0, specular=0.0, shininess=0.0, pen=None, hatch=None))]
+    fn new(
+        diffuse: f64,
+        specular: f64,
+        shininess: f64,
+        pen: Option<Pen>,
+        hatch: Option<HatchStyle>,
+    ) -> PyResult<Self> {
         Ok(raydeon::material::Material::new()
             .diffuse(diffuse)
             .specular(specular)
             .shininess(shininess)
-            .pen(raydeon::PenId::new(pen))
+            .pen(pen.map(Pen::parse).unwrap_or_default())
+            .maybe_hatch(hatch.map(|style| style.0))
             .build()
             .into())
     }
@@ -32,8 +90,13 @@ impl Material {
     }
 
     #[getter]
-    fn pen(&self) -> usize {
-        self.pen.value()
+    fn pen(&self) -> PenId {
+        self.pen.into()
+    }
+
+    #[getter]
+    fn hatch(&self) -> Option<HatchStyle> {
+        self.hatch.clone().map(Into::into)
     }
 
     fn __repr__(slf: &Bound<'_, Self>) -> PyResult<String> {
@@ -49,6 +112,7 @@ impl Default for Material {
 }
 
 pub(crate) fn register(m: &Bound<'_, PyModule>) -> PyResult<()> {
+    m.add_class::<PenId>()?;
     m.add_class::<Material>()?;
     Ok(())
 }

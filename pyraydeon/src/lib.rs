@@ -24,6 +24,7 @@ macro_rules! pywrap {
 
 mod camera;
 mod drawables;
+mod hatch;
 mod light;
 mod linear;
 mod material;
@@ -42,6 +43,7 @@ fn pyraydeon(m: &Bound<'_, PyModule>) -> PyResult<()> {
     crate::ray::register(m)?;
 
     crate::shapes::register(m)?;
+    crate::hatch::register(m)?;
     crate::material::register(m)?;
     crate::light::register(m)?;
 
