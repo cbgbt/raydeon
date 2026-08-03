@@ -5,9 +5,8 @@ use euclid::Angle;
 use raydeon::lights::PointLight;
 use raydeon::shapes::{AxisAlignedCuboid, Quad, Sphere, Triangle};
 use raydeon::{
-    Camera, CollisionGeometry, DrawableShape, HatchSpacing, HatchStyle, HatchSurface,
-    LineSegment3D, Material, PenId, Rendering, Scene, SceneLighting, Shape, StrokeKind, TonalPass,
-    ToneThreshold, ToneWhite, WPoint3, WVec3, WorldSpace,
+    Camera, DrawableShape, HatchSpacing, HatchStyle, Material, PenId, Rendering, Scene,
+    SceneLighting, Shape, StrokeKind, TonalPass, ToneThreshold, ToneWhite, WPoint3, WVec3,
 };
 use std::path::PathBuf;
 use std::sync::Arc;
