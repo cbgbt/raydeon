@@ -2,6 +2,9 @@
 # Checks that python examples render the expected image
 set -eo pipefail
 
+# A cached pyraydeon wheel can mask rust changes entirely; always rebuild.
+export UV_NO_CACHE=1
+
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 
 REQUIRED_TOOLS=("uv" "resvg" "perceptualdiff")

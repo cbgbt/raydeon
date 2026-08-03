@@ -1,5 +1,8 @@
 .DEFAULT_GOAL := build
 
+# A cached pyraydeon wheel can mask rust changes entirely; always rebuild.
+export UV_NO_CACHE = 1
+
 .PHONY: lint
 lint:
 	cargo clippy --locked -- -D warnings --no-deps
