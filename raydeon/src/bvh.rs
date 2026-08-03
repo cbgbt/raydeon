@@ -72,12 +72,7 @@ impl BVHTree {
         ]
         .into_iter()
         .flatten()
-        .min_by(|hit1, hit2| {
-            hit1.hit_data
-                .dist_to
-                .partial_cmp(&hit2.hit_data.dist_to)
-                .unwrap()
-        })
+        .min_by(|hit1, hit2| hit1.hit_data.dist_to.total_cmp(&hit2.hit_data.dist_to))
     }
 
     fn intersects_bounded_volume(&self, ray: Ray) -> Option<HitShape> {
@@ -100,12 +95,7 @@ impl BVHTree {
                     .hit_by(&ray)
                     .map(|hit_point| HitShape::new(hit_point, &collidable.shape))
             })
-            .min_by(|hit1, hit2| {
-                hit1.hit_data
-                    .dist_to
-                    .partial_cmp(&hit2.hit_data.dist_to)
-                    .unwrap()
-            })
+            .min_by(|hit1, hit2| hit1.hit_data.dist_to.total_cmp(&hit2.hit_data.dist_to))
     }
 }
 
@@ -237,12 +227,7 @@ impl LeafNode {
                     .hit_by(&ray)
                     .map(|hitpoint| HitShape::new(hitpoint, &shape.collidable.shape))
             })
-            .min_by(|hit1, hit2| {
-                hit1.hit_data
-                    .dist_to
-                    .partial_cmp(&hit2.hit_data.dist_to)
-                    .unwrap()
-            })
+            .min_by(|hit1, hit2| hit1.hit_data.dist_to.total_cmp(&hit2.hit_data.dist_to))
     }
 }
 
@@ -274,9 +259,9 @@ impl Node {
             zs.push(shape.aabb.min.z);
             zs.push(shape.aabb.max.z);
         }
-        xs.sort_by(|a, b| a.partial_cmp(b).unwrap());
-        ys.sort_by(|a, b| a.partial_cmp(b).unwrap());
-        zs.sort_by(|a, b| a.partial_cmp(b).unwrap());
+        xs.sort_by(f64::total_cmp);
+        ys.sort_by(f64::total_cmp);
+        zs.sort_by(f64::total_cmp);
 
         let mx = median(&xs);
         let my = median(&ys);
@@ -377,8 +362,95 @@ fn median(nums: &[f64]) -> f64 {
         n if n % 2 == 1 => nums[len / 2],
         _ => {
             let a = nums[len / 2 - 1];
-            let b = nums[len / 2 - 1];
+            let b = nums[len / 2];
             (a + b) / 2.0
+        }
+    }
+}
+
+/// The hierarchy is an acceleration structure, so the only thing worth
+/// asserting about it is that it answers exactly what testing every shape
+/// would.
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::shapes::AxisAlignedCuboid;
+    use crate::{DrawableShape, Shape, WPoint3, WVec3};
+    use proptest::prelude::*;
+
+    /// A cuboid as `(x, y, z, size)`.
+    type CuboidSpec = (f64, f64, f64, f64);
+
+    fn collidables(specs: &[CuboidSpec]) -> Vec<Collidable> {
+        specs
+            .iter()
+            .map(|&(x, y, z, size)| {
+                let cuboid = AxisAlignedCuboid::new()
+                    .min((x, y, z))
+                    .max((x + size, y + size, z + size))
+                    .build();
+                let geometry = Arc::new(cuboid) as Arc<dyn Shape>;
+                let collision = geometry.collision_geometry().unwrap().remove(0);
+                let shape = DrawableShape::new().geometry(geometry).build();
+                Collidable::new(shape, collision)
+            })
+            .collect()
+    }
+
+    fn nearest_hit_by_brute_force(collidables: &[Collidable], ray: Ray) -> Option<f64> {
+        collidables
+            .iter()
+            .filter_map(|collidable| collidable.collision.hit_by(&ray))
+            .map(|hit| hit.dist_to)
+            .min_by(f64::total_cmp)
+    }
+
+    fn cuboid_strategy() -> impl Strategy<Value = CuboidSpec> {
+        (-10.0..10.0f64, -10.0..10.0f64, -10.0..10.0f64, 0.5..3.0f64)
+    }
+
+    /// Rays with an axis-aligned direction component sit exactly on a split
+    /// plane's degenerate case; they are not what this test is about.
+    fn ray_strategy() -> impl Strategy<Value = Ray> {
+        let component = (-1.0..1.0f64).prop_map(|v| {
+            if v.abs() < 0.05 {
+                0.05_f64.copysign(v)
+            } else {
+                v
+            }
+        });
+        (
+            (-20.0..20.0f64, -20.0..20.0f64, -20.0..20.0f64),
+            (component.clone(), component.clone(), component),
+        )
+            .prop_map(|((px, py, pz), (dx, dy, dz))| {
+                Ray::normalize_new(WPoint3::new(px, py, pz), WVec3::new(dx, dy, dz))
+            })
+    }
+
+    proptest! {
+        #[test]
+        fn matches_brute_force_hits(
+            specs in proptest::collection::vec(cuboid_strategy(), 8..24),
+            ray in ray_strategy(),
+        ) {
+            let collidables = collidables(&specs);
+            let tree = BVHTree::new(&collidables);
+
+            let from_tree = tree.intersects(ray).map(|hit| hit.hit_data.dist_to);
+            let brute_force = nearest_hit_by_brute_force(&collidables, ray);
+
+            match (from_tree, brute_force) {
+                (Some(tree_dist), Some(brute_dist)) => {
+                    prop_assert!(
+                        (tree_dist - brute_dist).abs() < 1e-9,
+                        "hierarchy found a hit at {} where brute force found {}",
+                        tree_dist,
+                        brute_dist
+                    );
+                }
+                (tree_hit, brute_hit) => prop_assert_eq!(tree_hit, brute_hit),
+            }
         }
     }
 }

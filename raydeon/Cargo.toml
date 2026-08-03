@@ -18,4 +18,5 @@ tracing = { workspace = true, features = ["log"] }
 
 [dev-dependencies]
 env_logger.workspace = true
+proptest.workspace = true
 svg.workspace = true
