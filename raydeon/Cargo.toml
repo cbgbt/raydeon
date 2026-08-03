@@ -18,3 +18,4 @@ dot_vox.workspace = true
 env_logger.workspace = true
 proptest.workspace = true
 svg.workspace = true
+test-case.workspace = true

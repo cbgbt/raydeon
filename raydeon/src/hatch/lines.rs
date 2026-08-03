@@ -5,7 +5,7 @@
 //! outline and skipping holes is interval arithmetic, then lifted into world
 //! space for the renderer to occlude like any other geometry.
 
-use super::surface::{FaceBox, PlanarSurface, SphereSurface};
+use super::surface::{FaceBox, PlanarSurface, RevolutionSurface, SphereSurface};
 use super::HatchSpacing;
 use crate::path::SlicedSegment3D;
 use crate::ray::HitShape;
@@ -100,6 +100,99 @@ pub(crate) fn sphere_rings(
     segments
 }
 
+/// Rings around the axis, one every `spacing` of profile arc length,
+/// emitted as chords short enough to be shaded individually and lifted off
+/// the surface along its own outward normal.
+pub(crate) fn revolution_rings(
+    surface: &RevolutionSurface,
+    spacing: HatchSpacing,
+) -> Vec<LineSegment3D<WorldSpace>> {
+    let spacing = spacing.into_inner();
+    let arc_length = surface.arc_length();
+    if arc_length < MIN_INTERVAL {
+        return Vec::new();
+    }
+
+    let mut segments = Vec::new();
+    let mut t = spacing / 2.0;
+    while t < arc_length {
+        segments.extend(revolution_ring_at(surface, t));
+        t += spacing;
+    }
+    segments
+}
+
+/// The chords of one ring at profile arc length `t`, or none if the ring is
+/// too small a circle to draw usefully.
+fn revolution_ring_at(surface: &RevolutionSurface, t: f64) -> Vec<LineSegment3D<WorldSpace>> {
+    let radius = revolution_radius_at(surface, t);
+    let chords = ((radius * std::f64::consts::TAU) / SAMPLE_LEN).ceil() as usize;
+    if chords < 8 {
+        return Vec::new();
+    }
+    let at = |ndx: usize| {
+        let angle =
+            euclid::Angle::radians((ndx % chords) as f64 / chords as f64 * std::f64::consts::TAU);
+        revolution_lifted_point(surface, t, angle)
+    };
+    (0..chords)
+        .map(|ndx| LineSegment3D::new_segment(at(ndx), at(ndx + 1)))
+        .collect()
+}
+
+/// Meridians: profile curves repeated every `spacing` of arc length around
+/// the widest ring, each subdivided at [`SAMPLE_LEN`] along the profile so
+/// shading can chop them individually.
+pub(crate) fn revolution_meridians(
+    surface: &RevolutionSurface,
+    spacing: HatchSpacing,
+) -> Vec<LineSegment3D<WorldSpace>> {
+    let spacing = spacing.into_inner();
+    let max_radius = surface.max_radius();
+    let arc_length = surface.arc_length();
+    if max_radius < MIN_INTERVAL || arc_length < MIN_INTERVAL {
+        return Vec::new();
+    }
+
+    let steps = ((max_radius * std::f64::consts::TAU) / spacing).floor() as usize;
+    if steps == 0 {
+        return Vec::new();
+    }
+    let samples = ((arc_length / SAMPLE_LEN).ceil() as usize).max(1);
+
+    let mut segments = Vec::new();
+    for step in 0..steps {
+        let angle = euclid::Angle::radians(step as f64 / steps as f64 * std::f64::consts::TAU);
+        let at = |sample: usize| {
+            let t = sample as f64 / samples as f64 * arc_length;
+            revolution_lifted_point(surface, t, angle)
+        };
+        segments.extend(
+            (0..samples).map(|sample| LineSegment3D::new_segment(at(sample), at(sample + 1))),
+        );
+    }
+    segments
+}
+
+/// The perpendicular distance from the axis at profile arc length `t`.
+fn revolution_radius_at(surface: &RevolutionSurface, t: f64) -> f64 {
+    let point = surface.point_at(t, euclid::Angle::radians(0.0));
+    let offset = point - surface.base();
+    let along_axis = offset.dot(surface.axis());
+    (offset - surface.axis() * along_axis).length()
+}
+
+/// The world position at profile arc length `t` and `angle`, lifted off the
+/// surface along its own outward normal so the drawn arc survives its own
+/// occlusion check.
+fn revolution_lifted_point(
+    surface: &RevolutionSurface,
+    t: f64,
+    angle: euclid::Angle<f64>,
+) -> WPoint3 {
+    surface.point_at(t, angle) + surface.normal_at(t, angle) * LINE_LIFT
+}
+
 /// Keeps the stretches of `segment` whose illumination passes `keep`,
 /// rejoining stretches separated by a single rejected sample so that shading
 /// reads as strokes rather than dashes.
@@ -140,7 +233,11 @@ pub(crate) fn filter_by_tone(
 }
 
 /// A pair of unit vectors spanning the plane perpendicular to `axis`.
-fn ring_frame(axis: WVec3) -> (WVec3, WVec3) {
+///
+/// Shared with [`crate::hatch::surface::RevolutionSurface`], which needs the
+/// same reference frame to turn an angle into a radial direction: one basis
+/// for "angle around this axis" everywhere it is asked for.
+pub(crate) fn ring_frame(axis: WVec3) -> (WVec3, WVec3) {
     let seed = if axis.x.abs() < 0.9 {
         WVec3::new(1.0, 0.0, 0.0)
     } else {
@@ -261,7 +358,7 @@ fn hole_span(hole: &FaceBox, anchor: FaceVec, dir: FaceVec) -> Option<(f64, f64)
 mod tests {
     use super::*;
     use crate::hatch::style::HatchSpacing;
-    use crate::hatch::surface::FacePoint;
+    use crate::hatch::surface::{FacePoint, ProfilePoint};
     use proptest::prelude::*;
 
     fn spacing(value: f64) -> HatchSpacing {
@@ -412,6 +509,70 @@ mod tests {
                 "ring point sits at {offset} from the center"
             );
         }
+    }
+
+    /// A vertical-wall (cylindrical) profile, so a ring's radial distance
+    /// from the axis is exactly the profile's constant radius.
+    fn cylinder(radius: f64) -> RevolutionSurface {
+        RevolutionSurface::try_new(
+            WPoint3::new(1.0, 2.0, 3.0),
+            WVec3::new(0.0, 0.0, 1.0),
+            vec![
+                ProfilePoint {
+                    radius,
+                    height: 0.0,
+                },
+                ProfilePoint {
+                    radius,
+                    height: 2.0,
+                },
+            ],
+        )
+        .expect("a straight wall is a surface")
+    }
+
+    #[test]
+    fn revolution_rings_stay_on_the_lifted_surface() {
+        let surface = cylinder(1.5);
+        let rings = revolution_rings(&surface, spacing(0.3));
+
+        assert!(!rings.is_empty(), "a cylinder should carry rings");
+        for ring in rings {
+            let offset = ring.p1() - surface.base();
+            let height = offset.dot(surface.axis());
+            let radius = (offset - surface.axis() * height).length();
+            assert!(
+                (radius - (1.5 + LINE_LIFT)).abs() < 1.0e-9,
+                "ring point sits at radius {radius} from the axis"
+            );
+        }
+    }
+
+    #[test]
+    fn revolution_meridians_span_the_whole_profile() {
+        let surface = cylinder(1.0);
+        let meridians = revolution_meridians(&surface, spacing(0.4));
+
+        assert!(!meridians.is_empty(), "a cylinder should carry meridians");
+        let heights: Vec<f64> = meridians
+            .iter()
+            .flat_map(|line| {
+                let base = surface.base();
+                let axis = surface.axis();
+                [(line.p1() - base).dot(axis), (line.p2() - base).dot(axis)]
+            })
+            .collect();
+        let min_height = heights.iter().copied().fold(f64::MAX, f64::min);
+        let max_height = heights.iter().copied().fold(f64::MIN, f64::max);
+
+        assert!(
+            min_height < SAMPLE_LEN,
+            "meridians should reach the foot, min height was {min_height}"
+        );
+        assert!(
+            max_height > 2.0 - SAMPLE_LEN,
+            "meridians should reach the lip, max height was {max_height}"
+        );
     }
 
     proptest! {

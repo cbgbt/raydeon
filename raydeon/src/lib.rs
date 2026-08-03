@@ -20,8 +20,8 @@ pub use camera::{Camera, CameraOptions, LookAtError, Observation, Perspective, P
 pub use hatch::contour::{ContourField, ContourResolution, ContourStyle};
 pub use hatch::style::{HatchCoverage, HatchSpacing, HatchStyle, TonalPass, ToneThreshold};
 pub use hatch::surface::{
-    FaceBox, FacePoint, FaceSpace, HatchSurface, PlanarSurface, PlanarSurfaceError, SphereSurface,
-    SphereSurfaceError,
+    FaceBox, FacePoint, FaceSpace, HatchSurface, PlanarSurface, PlanarSurfaceError, ProfilePoint,
+    RevolutionSurface, RevolutionSurfaceError, SphereSurface, SphereSurfaceError,
 };
 pub use lights::Light;
 pub use material::Material;

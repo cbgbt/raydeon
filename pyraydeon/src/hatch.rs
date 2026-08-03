@@ -16,7 +16,7 @@ use numpy::{Ix1, PyArray, PyArrayLike2};
 use pyo3::exceptions::{PyIndexError, PyTypeError, PyValueError};
 use pyo3::prelude::*;
 
-use crate::linear::Point3;
+use crate::linear::{Point3, Vec3};
 
 pywrap!(HatchStyle, raydeon::HatchStyle);
 
@@ -164,15 +164,67 @@ impl SphereSurface {
     }
 }
 
+pywrap!(RevolutionSurface, raydeon::RevolutionSurface);
+
+#[pymethods]
+impl RevolutionSurface {
+    /// A surface of revolution: a radial profile spun around an axis
+    /// through `base`.
+    ///
+    /// `profile` is an Nx2 array of `(radius, height)` points from foot to
+    /// lip, in world units; radii must be finite and positive, and heights
+    /// must strictly increase.
+    #[new]
+    fn new(
+        base: &Bound<'_, PyAny>,
+        axis: &Bound<'_, PyAny>,
+        profile: PyArrayLike2<'_, f64>,
+    ) -> PyResult<Self> {
+        let base: Point3 = base.try_into()?;
+        let axis: Vec3 = axis.try_into()?;
+        let profile = rows(&profile, 2, "profile must be an Nx2 array")?
+            .into_iter()
+            .map(|point| raydeon::ProfilePoint {
+                radius: point[0],
+                height: point[1],
+            })
+            .collect();
+
+        raydeon::RevolutionSurface::try_new(base.0.cast_unit(), axis.0.cast_unit(), profile)
+            .map(Into::into)
+            .map_err(|err| PyValueError::new_err(err.to_string()))
+    }
+
+    #[getter]
+    fn base<'py>(&self, py: Python<'py>) -> Bound<'py, PyArray<f64, Ix1>> {
+        PyArray::from_slice_bound(py, &self.0.base().to_array())
+    }
+
+    #[getter]
+    fn axis<'py>(&self, py: Python<'py>) -> Bound<'py, PyArray<f64, Ix1>> {
+        PyArray::from_slice_bound(py, &self.0.axis().to_array())
+    }
+
+    fn __repr__(slf: &Bound<'_, Self>) -> PyResult<String> {
+        let class_name = slf.get_type().qualname()?;
+        Ok(format!("{}<{:#?}>", class_name, slf.borrow().0))
+    }
+}
+
 /// Reads a surface a Python shape offers up for hatching.
 pub(crate) fn hatch_surface_from_py(obj: &Bound<'_, PyAny>) -> PyResult<raydeon::HatchSurface> {
     if let Ok(planar) = obj.extract::<PlanarSurface>() {
         return Ok(raydeon::HatchSurface::Planar(planar.0));
     }
-    obj.extract::<SphereSurface>()
-        .map(|sphere| raydeon::HatchSurface::Sphere(sphere.0))
+    if let Ok(sphere) = obj.extract::<SphereSurface>() {
+        return Ok(raydeon::HatchSurface::Sphere(sphere.0));
+    }
+    obj.extract::<RevolutionSurface>()
+        .map(|revolution| raydeon::HatchSurface::Revolution(revolution.0))
         .map_err(|_| {
-            PyTypeError::new_err("a hatch surface must be a PlanarSurface or a SphereSurface")
+            PyTypeError::new_err(
+                "a hatch surface must be a PlanarSurface, a SphereSurface or a RevolutionSurface",
+            )
         })
 }
 
@@ -181,6 +233,9 @@ pub(crate) fn hatch_surface_into_py(py: Python<'_>, surface: raydeon::HatchSurfa
     match surface {
         raydeon::HatchSurface::Planar(planar) => PlanarSurface::from(planar).into_py(py),
         raydeon::HatchSurface::Sphere(sphere) => SphereSurface::from(sphere).into_py(py),
+        raydeon::HatchSurface::Revolution(revolution) => {
+            RevolutionSurface::from(revolution).into_py(py)
+        }
     }
 }
 
@@ -188,5 +243,6 @@ pub(crate) fn register(m: &Bound<'_, PyModule>) -> PyResult<()> {
     m.add_class::<HatchStyle>()?;
     m.add_class::<PlanarSurface>()?;
     m.add_class::<SphereSurface>()?;
+    m.add_class::<RevolutionSurface>()?;
     Ok(())
 }

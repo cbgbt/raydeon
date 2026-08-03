@@ -16,8 +16,8 @@ mod lines;
 pub use contour::{ContourField, ContourResolution, ContourStyle};
 pub use style::{HatchCoverage, HatchSpacing, HatchStyle, TonalPass, ToneThreshold};
 pub use surface::{
-    FaceBox, FacePoint, FaceSpace, HatchSurface, PlanarSurface, PlanarSurfaceError, SphereSurface,
-    SphereSurfaceError,
+    FaceBox, FacePoint, FaceSpace, HatchSurface, PlanarSurface, PlanarSurfaceError, ProfilePoint,
+    RevolutionSurface, RevolutionSurfaceError, SphereSurface, SphereSurfaceError,
 };
 
 use crate::scene::SceneCamera;
@@ -38,6 +38,7 @@ pub(crate) fn hatch_shape(
         .flat_map(|surface| match surface {
             HatchSurface::Planar(planar) => hatch_planar(cam, shape, planar, style),
             HatchSurface::Sphere(sphere) => hatch_sphere(cam, shape, sphere, style),
+            HatchSurface::Revolution(revolution) => hatch_revolution(cam, shape, revolution, style),
         })
         .collect()
 }
@@ -137,6 +138,79 @@ fn hatch_sphere(
                 .iter()
                 .flat_map(|ring| {
                     shade(cam, shape, ring, |point| (point - center).normalize(), keep)
+                })
+                .collect::<Vec<_>>()
+        })
+        .collect()
+}
+
+/// Which kind of curve a revolution hatch pass draws.
+#[derive(Debug, Copy, Clone)]
+enum RevolutionLine {
+    /// A latitude ring, stepped around the surface by profile arc length.
+    Ring,
+    /// A profile curve, stepped around the axis by angle.
+    Meridian,
+}
+
+fn hatch_revolution(
+    cam: &SceneCamera,
+    shape: &DrawableShape,
+    surface: &RevolutionSurface,
+    style: &HatchStyle,
+) -> Vec<LineSegment3D<WorldSpace>> {
+    let passes: Vec<(RevolutionLine, HatchSpacing, Keep)> = match style {
+        // The natural cross-hatch on a thrown form: rings and meridians
+        // alternate pass to pass, darkest last.
+        HatchStyle::Tonal { passes } => passes
+            .iter()
+            .enumerate()
+            .map(|(ndx, pass)| {
+                let line = if ndx % 2 == 0 {
+                    RevolutionLine::Ring
+                } else {
+                    RevolutionLine::Meridian
+                };
+                (line, pass.spacing, Keep::Below(pass.threshold.into_inner()))
+            })
+            .collect(),
+        HatchStyle::Stochastic {
+            spacing, coverage, ..
+        } => vec![(
+            RevolutionLine::Ring,
+            *spacing,
+            Keep::jittered(*coverage, cam.seed()),
+        )],
+        // A projected flow direction has no stable meaning on a closed
+        // revolution, so one jittered rings pass stands in for the flow
+        // pass, and the cross-below-threshold pass is dropped — exactly as
+        // the sphere path above does.
+        HatchStyle::LightFlow {
+            spacing, coverage, ..
+        } => vec![(
+            RevolutionLine::Ring,
+            *spacing,
+            Keep::jittered(*coverage, cam.seed()),
+        )],
+    };
+
+    passes
+        .into_iter()
+        .flat_map(|(line, spacing, keep)| {
+            let curves = match line {
+                RevolutionLine::Ring => lines::revolution_rings(surface, spacing),
+                RevolutionLine::Meridian => lines::revolution_meridians(surface, spacing),
+            };
+            curves
+                .iter()
+                .flat_map(|curve| {
+                    shade(
+                        cam,
+                        shape,
+                        curve,
+                        |point| surface.normal_at_point(point),
+                        keep,
+                    )
                 })
                 .collect::<Vec<_>>()
         })
@@ -357,5 +431,182 @@ mod tests {
 
         assert!(!hatch_strokes(&scene, WALL_PEN).is_empty());
         assert!(hatch_strokes(&unhatched, WALL_PEN).is_empty());
+    }
+
+    const LATHE_PEN: usize = 0;
+
+    /// A wheel-thrown cylinder standing on the origin, lit from one side so
+    /// part of its curved surface falls into a tonal band.
+    fn lathe_scene(style: HatchStyle) -> Scene {
+        let lathe = crate::shapes::Lathe::new()
+            .base(WPoint3::new(0.0, 0.0, 0.0))
+            .profile(vec![
+                ProfilePoint {
+                    radius: 1.0,
+                    height: 0.0,
+                },
+                ProfilePoint {
+                    radius: 1.0,
+                    height: 2.0,
+                },
+            ])
+            .build();
+
+        Scene::new()
+            .geometry(vec![DrawableShape::new()
+                .geometry(Arc::new(lathe))
+                .material(
+                    Material::new()
+                        .diffuse(1.0)
+                        .pen(PenId::new(LATHE_PEN))
+                        .hatch(style)
+                        .build(),
+                )
+                .build()])
+            .lighting(
+                SceneLighting::new()
+                    .with_lights(vec![Arc::new(
+                        PointLight::new()
+                            .position((3.0, 0.0, 1.0))
+                            .intensity(1.0)
+                            .build(),
+                    )])
+                    .with_tone_white(ToneWhite::try_new(1.0).expect("one is a valid tone white")),
+            )
+            .build()
+    }
+
+    fn lathe_camera() -> Camera {
+        Camera::new()
+            .observation(
+                Camera::look_at(
+                    WPoint3::new(0.0, -6.0, 1.0),
+                    WVec3::new(0.0, 0.0, 1.0),
+                    WVec3::new(0.0, 0.0, 1.0),
+                )
+                .expect("the test camera looks at a point in front of it"),
+            )
+            .perspective(
+                Camera::perspective(50.0, 512, 512, 0.1, 20.0)
+                    .expect("the test frustum parameters are well formed"),
+            )
+            .build()
+    }
+
+    /// The hatch strokes the lathe's own pen draws, from `lathe_camera`.
+    fn lathe_hatch_strokes(scene: &Scene) -> Vec<Stroke> {
+        scene
+            .attach_camera(lathe_camera())
+            .render()
+            .strokes_for_pen(PenId::new(LATHE_PEN))
+            .filter(|stroke| stroke.kind == StrokeKind::Hatch)
+            .copied()
+            .collect()
+    }
+
+    #[test]
+    fn a_tonal_hatched_lathe_emits_hatch_strokes() {
+        let scene = lathe_scene(HatchStyle::tonal_crosshatch(spacing()));
+        assert!(
+            !lathe_hatch_strokes(&scene).is_empty(),
+            "rings and meridians should survive their own surface's occlusion check"
+        );
+    }
+
+    #[test]
+    fn tonal_hatching_on_a_revolution_alternates_ring_and_meridian_passes() {
+        let ring_spacing = spacing();
+        let meridian_spacing = HatchSpacing::try_new(0.45).expect("0.45 is a valid spacing");
+        let surface = RevolutionSurface::try_new(
+            WPoint3::zero(),
+            WVec3::new(0.0, 0.0, 1.0),
+            vec![
+                ProfilePoint {
+                    radius: 1.0,
+                    height: 0.0,
+                },
+                ProfilePoint {
+                    radius: 1.0,
+                    height: 2.0,
+                },
+            ],
+        )
+        .expect("a cylinder is a surface");
+        let expected_ring_count = lines::revolution_rings(&surface, ring_spacing).len();
+        let expected_meridian_count = lines::revolution_meridians(&surface, meridian_spacing).len();
+        assert_ne!(
+            expected_ring_count, expected_meridian_count,
+            "test fixture sanity check: the two passes must be distinguishable by count"
+        );
+
+        // A wide-open threshold keeps every sample, so nothing is chopped
+        // away by lighting: the raw hatch output (before the scene clips
+        // strokes the shape's own near side occludes) translates the pass
+        // counts straight into stroke counts, and the total can only match
+        // the ring+meridian split if even passes drew rings and odd passes
+        // drew meridians.
+        let wide_open = ToneThreshold::try_new(1.0).expect("1.0 is a valid threshold");
+        let style = HatchStyle::Tonal {
+            passes: vec![
+                TonalPass {
+                    angle: Angle::degrees(0.0),
+                    spacing: ring_spacing,
+                    threshold: wide_open,
+                },
+                TonalPass {
+                    angle: Angle::degrees(0.0),
+                    spacing: meridian_spacing,
+                    threshold: wide_open,
+                },
+            ],
+        };
+
+        let lathe = crate::shapes::Lathe::new()
+            .base(WPoint3::zero())
+            .profile(surface.profile().to_vec())
+            .build();
+        let drawable = DrawableShape::new().geometry(Arc::new(lathe)).build();
+        let scene = Scene::new()
+            .geometry(vec![drawable.clone()])
+            .lighting(
+                SceneLighting::new()
+                    .with_lights(vec![Arc::new(
+                        PointLight::new()
+                            .position((3.0, 0.0, 1.0))
+                            .intensity(1.0)
+                            .build(),
+                    )])
+                    .with_tone_white(ToneWhite::try_new(1.0).expect("one is a valid tone white")),
+            )
+            .build();
+        let cam = scene.attach_camera(lathe_camera());
+
+        let raw_lines = hatch_shape(&cam, &drawable, &style);
+        assert_eq!(
+            raw_lines.len(),
+            expected_ring_count + expected_meridian_count
+        );
+    }
+
+    #[test]
+    fn light_flow_on_a_revolution_drops_its_cross_pass() {
+        let light_flow = |cross_spacing: f64, cross_threshold: f64| HatchStyle::LightFlow {
+            source: WPoint3::new(3.0, 0.0, 1.0),
+            spacing: spacing(),
+            cross_spacing: HatchSpacing::try_new(cross_spacing)
+                .expect("test cross spacing is positive"),
+            cross_threshold: ToneThreshold::try_new(cross_threshold)
+                .expect("test cross threshold is a tone fraction"),
+            coverage: crate::HatchCoverage::try_new(0.95).expect("0.95 is a valid coverage"),
+        };
+
+        let dropped_cross_a = lathe_hatch_strokes(&lathe_scene(light_flow(0.05, 0.9)));
+        let dropped_cross_b = lathe_hatch_strokes(&lathe_scene(light_flow(0.9, 0.01)));
+
+        assert!(!dropped_cross_a.is_empty());
+        assert_eq!(
+            dropped_cross_a, dropped_cross_b,
+            "wildly different cross parameters must draw identically: the cross pass is dropped"
+        );
     }
 }

@@ -1,105 +1,51 @@
-//! Detail shapes for the storefront: wheel-thrown pottery, an awning with
-//! drawn stripes, and sketch-line dressing (pavement, bricks, cracks).
-use raydeon::shapes::{Quad, Triangle};
+//! Detail shapes for the storefront: an awning with drawn stripes, and
+//! sketch-line dressing (pavement, bricks, cracks). The storefront's
+//! wheel-thrown pottery is `raydeon::shapes::Lathe`.
+use raydeon::shapes::{Lathe, Quad};
 use raydeon::{
-    Camera, CollisionGeometry, HatchSurface, LineSegment3D, Shape, WPoint3, WVec3, WorldSpace,
+    Camera, CollisionGeometry, HatchSurface, LineSegment3D, ProfilePoint, Shape, WPoint3, WVec3,
+    WorldSpace,
 };
 use std::sync::Arc;
 
-/// A surface of revolution: a radial profile spun around a vertical axis.
-/// Draws its throwing rings; collision is a triangle band per profile step.
-#[derive(Debug)]
-pub struct Lathe {
-    /// Where the axis meets the surface the piece stands on.
-    base: WPoint3,
-    /// `(radius, height)` pairs from foot to lip, in world units.
-    profile: Vec<(f64, f64)>,
-    segments: usize,
-}
-
-impl Lathe {
-    pub fn new(base: WPoint3, profile: Vec<(f64, f64)>) -> Self {
-        Self {
-            base,
-            profile,
-            segments: 28,
-        }
-    }
-
-    fn ring_point(&self, radius: f64, height: f64, ndx: usize) -> WPoint3 {
-        let angle = (ndx % self.segments) as f64 / self.segments as f64 * std::f64::consts::TAU;
-        self.base + WVec3::new(radius * angle.cos(), radius * angle.sin(), height)
-    }
-}
-
-impl Shape for Lathe {
-    fn collision_geometry(&self) -> Option<Vec<Arc<dyn CollisionGeometry>>> {
-        let mut triangles: Vec<Arc<dyn CollisionGeometry>> = Vec::new();
-        for band in self.profile.windows(2) {
-            let ((r0, h0), (r1, h1)) = (band[0], band[1]);
-            for ndx in 0..self.segments {
-                let a0 = self.ring_point(r0, h0, ndx);
-                let a1 = self.ring_point(r0, h0, ndx + 1);
-                let b0 = self.ring_point(r1, h1, ndx);
-                let b1 = self.ring_point(r1, h1, ndx + 1);
-                triangles.push(Arc::new(Triangle::new().v0(a0).v1(a1).v2(b0).build()));
-                triangles.push(Arc::new(Triangle::new().v0(b0).v1(a1).v2(b1).build()));
-            }
-        }
-        Some(triangles)
-    }
-
-    fn paths(&self, _cam: &Camera) -> Vec<LineSegment3D<WorldSpace>> {
-        // Throwing rings at each profile step, lifted off the surface so the
-        // visible arcs survive their own occlusion check.
-        let mut rings = Vec::new();
-        for &(radius, height) in &self.profile {
-            let lifted = radius + 0.008;
-            for ndx in 0..self.segments {
-                rings.push(LineSegment3D::new_segment(
-                    self.ring_point(lifted, height, ndx),
-                    self.ring_point(lifted, height, ndx + 1),
-                ));
-            }
-        }
-        rings
-    }
-
-    fn hatch_surfaces(&self) -> Vec<HatchSurface> {
-        Vec::new()
-    }
-}
-
 /// The tall vase profile, foot to lip.
 pub fn vase(base: WPoint3) -> Lathe {
-    Lathe::new(
-        base,
-        vec![
-            (0.16, 0.0),
-            (0.21, 0.05),
-            (0.17, 0.12),
-            (0.26, 0.30),
-            (0.31, 0.48),
-            (0.27, 0.62),
-            (0.16, 0.74),
-            (0.13, 0.82),
-            (0.18, 0.90),
-        ],
-    )
+    Lathe::new()
+        .base(base)
+        .profile(
+            [
+                (0.16, 0.0),
+                (0.21, 0.05),
+                (0.17, 0.12),
+                (0.26, 0.30),
+                (0.31, 0.48),
+                (0.27, 0.62),
+                (0.16, 0.74),
+                (0.13, 0.82),
+                (0.18, 0.90),
+            ]
+            .map(|(radius, height)| ProfilePoint { radius, height })
+            .to_vec(),
+        )
+        .build()
 }
 
 /// A wide, low bowl.
 pub fn bowl(base: WPoint3) -> Lathe {
-    Lathe::new(
-        base,
-        vec![
-            (0.11, 0.0),
-            (0.27, 0.06),
-            (0.36, 0.16),
-            (0.38, 0.25),
-            (0.34, 0.29),
-        ],
-    )
+    Lathe::new()
+        .base(base)
+        .profile(
+            [
+                (0.11, 0.0),
+                (0.27, 0.06),
+                (0.36, 0.16),
+                (0.38, 0.25),
+                (0.34, 0.29),
+            ]
+            .map(|(radius, height)| ProfilePoint { radius, height })
+            .to_vec(),
+        )
+        .build()
 }
 
 /// A sloped awning canvas whose stripes are drawn geometry, not hatching.

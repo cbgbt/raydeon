@@ -1,9 +1,4 @@
-//! The surfaces a shape offers up to be hatched.
-//!
-//! A hatchable surface is not the shape itself: it is the piece of geometry
-//! hatch lines are drawn across, in a frame those lines can be laid out in.
-//! Both kinds are parsed on the way in, so the engine can lay lines out
-//! without re-checking that the frame makes sense.
+//! Convex planar patches: flat faces, optionally with rectangular openings.
 
 use crate::{Point2, WPoint3, WVec3};
 use euclid::Angle;
@@ -25,13 +20,6 @@ const MIN_EXTENT: f64 = 1.0e-9;
 /// frame its outline and holes were written in.
 const MAX_SKEW: f64 = 1.0e-9;
 
-/// A piece of a shape's surface which hatch lines can be drawn across.
-#[derive(Debug, Clone)]
-pub enum HatchSurface {
-    Planar(PlanarSurface),
-    Sphere(SphereSurface),
-}
-
 /// Why a description of a planar surface describes no surface.
 #[derive(Debug, Snafu)]
 pub enum PlanarSurfaceError {
@@ -49,13 +37,6 @@ pub enum PlanarSurfaceError {
     OutlineTooSmall { corners: usize, area: f64 },
     #[snafu(display("the outline turns back on itself at corner {corner}, and hatch lines can only be clipped to a convex outline"))]
     OutlineNotConvex { corner: usize },
-}
-
-/// Why a description of a sphere describes no surface.
-#[derive(Debug, Snafu)]
-pub enum SphereSurfaceError {
-    #[snafu(display("a sphere's radius must be finite and positive, but was {radius}"))]
-    NonPositiveRadius { radius: f64 },
 }
 
 /// A convex planar region, optionally with rectangular openings which hatch
@@ -193,63 +174,6 @@ impl PlanarSurface {
                 .dot(self.basis[1])
                 .atan2(in_plane.dot(self.basis[0])),
         )
-    }
-}
-
-/// A whole sphere, hatched with contour rings rather than straight lines.
-#[derive(Debug, Copy, Clone)]
-pub struct SphereSurface {
-    center: WPoint3,
-    radius: f64,
-}
-
-impl SphereSurface {
-    pub fn try_new(center: WPoint3, radius: f64) -> Result<Self, SphereSurfaceError> {
-        ensure!(
-            radius.is_finite() && radius > 0.0,
-            NonPositiveRadiusSnafu { radius }
-        );
-        Ok(Self { center, radius })
-    }
-
-    pub fn center(&self) -> WPoint3 {
-        self.center
-    }
-
-    pub fn radius(&self) -> f64 {
-        self.radius
-    }
-}
-
-/// Offers a parsed planar surface for hatching, or nothing at all.
-///
-/// A shape reports the surfaces it has; it has no caller to hand a parse
-/// failure to. A description which does not describe a surface therefore
-/// yields no surface, and says why in the log.
-pub(crate) fn offer_planar(
-    parsed: Result<PlanarSurface, PlanarSurfaceError>,
-    shape: &impl std::fmt::Debug,
-) -> Option<HatchSurface> {
-    match parsed {
-        Ok(surface) => Some(HatchSurface::Planar(surface)),
-        Err(error) => {
-            tracing::warn!("{shape:?} offers no hatchable surface: {error}");
-            None
-        }
-    }
-}
-
-/// Offers a parsed sphere for hatching, or nothing at all.
-pub(crate) fn offer_sphere(
-    parsed: Result<SphereSurface, SphereSurfaceError>,
-    shape: &impl std::fmt::Debug,
-) -> Option<HatchSurface> {
-    match parsed {
-        Ok(surface) => Some(HatchSurface::Sphere(surface)),
-        Err(error) => {
-            tracing::warn!("{shape:?} offers no hatchable surface: {error}");
-            None
-        }
     }
 }
 
@@ -467,13 +391,5 @@ mod tests {
             45.0,
             "a direction with no in-plane part takes the default diagonal"
         );
-    }
-
-    #[test]
-    fn a_sphere_needs_a_real_radius() {
-        assert!(SphereSurface::try_new(WPoint3::zero(), 0.0).is_err());
-        assert!(SphereSurface::try_new(WPoint3::zero(), -1.0).is_err());
-        assert!(SphereSurface::try_new(WPoint3::zero(), f64::NAN).is_err());
-        assert!(SphereSurface::try_new(WPoint3::zero(), 1.5).is_ok());
     }
 }
