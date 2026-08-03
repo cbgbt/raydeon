@@ -1,0 +1,10 @@
+[package]
+name = "hatch-lab"
+version = "0.1.0"
+edition = "2021"
+publish = false
+
+[dependencies]
+euclid.workspace = true
+raydeon.workspace = true
+svg.workspace = true

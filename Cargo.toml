@@ -3,6 +3,7 @@ resolver = "2"
 members = [
     "raydeon",
     "pyraydeon",
+    "hatch-lab",
 ]
 
 [workspace.dependencies]

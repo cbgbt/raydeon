@@ -1,5 +1,5 @@
 use crate::EPSILON;
-use bon::{builder, Builder};
+use bon::Builder;
 use float_cmp::{approx_eq, ApproxEq};
 
 #[derive(Debug, Clone, Copy, Default, Builder)]

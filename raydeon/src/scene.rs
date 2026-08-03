@@ -164,6 +164,21 @@ impl Scene {
         self.geometry.bvh.intersects(ray)
     }
 
+    /// Computes the total illumination arriving at a surface point from the
+    /// scene's lights, including ambient light.
+    ///
+    /// Callers which already know the surface geometry can construct the
+    /// [`HitShape`] directly rather than casting a ray, which is useful for
+    /// sampling illumination along surface-space hatch lines.
+    pub fn illumination_for_hit<'s>(&'s self, hit: HitShape<'s>) -> f64 {
+        self.lighting
+            .lights
+            .iter()
+            .map(|light| light.compute_illumination(self, hit))
+            .sum::<f64>()
+            + self.lighting.ambient
+    }
+
     /// Returns whether or not the given camera has a clear line of sight to a given point.
     fn visible(&self, from: WPoint3, point: WPoint3) -> bool {
         let v = from - point;
@@ -238,6 +253,27 @@ impl<'s> SceneCamera<'s> {
         info!("Querying geometry for subpaths");
         let parent_paths = self.geometry_paths();
 
+        self.clip_and_project(&parent_paths)
+            .into_iter()
+            .map(|segment| {
+                DrawableSegment::new()
+                    .segment(segment)
+                    .kind(SegmentKind::Path)
+                    .build()
+            })
+            .collect()
+    }
+
+    /// Clips the given world-space segments against scene geometry, keeping
+    /// only portions visible to the camera, and projects them to camera space.
+    ///
+    /// Segments lying on a surface of scene geometry survive their own
+    /// surface's occlusion check, so this can render caller-generated
+    /// surface detail (such as hatch lines) with correct hidden-line removal.
+    pub fn clip_and_project<'a>(
+        &self,
+        parent_paths: &[LineSegment3D<'a, WorldSpace>],
+    ) -> Vec<LineSegment2D<'a, CameraSpace>> {
         info!(
             "Caching line segment chunks based on camera position, starting with {} segments",
             parent_paths.len()
@@ -287,14 +323,6 @@ impl<'s> SceneCamera<'s> {
         info!("{} paths remain after clipping", paths.len());
 
         paths
-            .into_iter()
-            .map(|segment| {
-                DrawableSegment::new()
-                    .segment(segment)
-                    .kind(SegmentKind::Path)
-                    .build()
-            })
-            .collect()
     }
 
     pub fn render_with_lighting(&self) -> Vec<DrawableSegment<'s>> {
@@ -391,22 +419,9 @@ impl<'s> SceneCamera<'s> {
     }
 
     fn lighting_for_ray(&self, ray: Ray) -> Option<f64> {
-        let lighting = self.scene.intersects(ray).and_then(|hit_shape| {
-            if hit_shape.hit_data.dist_to > self.camera.perspective.zfar {
-                return None;
-            }
-            Some(
-                self.scene
-                    .lighting
-                    .lights
-                    .iter()
-                    .map(|light| light.compute_illumination(self.scene, hit_shape))
-                    .sum::<f64>()
-                    + self.scene.lighting.ambient,
-            )
-        });
-
-        lighting
+        let hit_shape = self.scene.intersects(ray)?;
+        (hit_shape.hit_data.dist_to <= self.camera.perspective.zfar)
+            .then(|| self.scene.illumination_for_hit(hit_shape))
     }
 
     // https://smashingpencilsart.com/how-do-you-hatch-with-a-pen/

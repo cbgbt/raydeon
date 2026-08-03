@@ -1,6 +1,6 @@
 //! Provides collision for spheres.
 use crate::{CollisionGeometry, HitData, Ray, WPoint3, WVec3};
-use bon::{builder, Builder};
+use bon::Builder;
 
 #[derive(Debug, Copy, Clone, Builder)]
 #[builder(start_fn(name = new))]
