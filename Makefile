@@ -34,8 +34,12 @@ render-test: rust-render-test py-render-test
 unit-test:
 	cargo test --locked
 
+.PHONY: file-length
+file-length:
+	git ls-files '*.rs' | xargs wc -l | awk '$$2 != "total" && $$1 > 600 {print; bad=1} END {exit bad}'
+
 .PHONY: check
-check: check-fmt lint unit-test render-test
+check: check-fmt lint unit-test render-test file-length
 
 .PHONY: build
 build: check

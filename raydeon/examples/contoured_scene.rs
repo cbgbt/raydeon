@@ -207,8 +207,9 @@ fn opening(min: (f64, f64), max: (f64, f64)) -> FaceBox {
 }
 
 /// A wall with rectangular openings cut into it: the openings are drawn as
-/// frames and hatching skips them, though they remain solid to collision —
-/// so its cast shadow lands on the ground with two bites taken out of it.
+/// frames and hatching skips them, but they remain solid to collision — so
+/// the wall still casts one unbroken shadow onto the ground, with no bites
+/// taken out of it for the openings.
 #[derive(Debug)]
 struct WindowedQuad {
     quad: Quad,

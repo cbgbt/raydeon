@@ -6,48 +6,64 @@
 //! module walks; `hatch::contour` maps the polylines it returns back into
 //! world-space geometry.
 
-use std::collections::{HashMap, HashSet};
+mod chain;
+mod edge;
+mod resolve;
 
-/// A row-major grid of a scalar field's samples at each lattice node, plus
-/// its value at every cell's center (consulted only to break a saddle tie).
+use chain::chain_polylines;
+pub(crate) use edge::{EdgeCrossing, EdgeId};
+use resolve::{cell_pairs, CellCorners};
+use std::collections::HashMap;
+
+/// A row-major grid of a scalar field's samples at each lattice node, plus a
+/// way to sample the field at any cell's center — consulted only to break a
+/// saddle tie, so a center is never sampled unless marching actually reaches
+/// an ambiguous cell.
 ///
 /// `wraps` marks a grid whose column axis is a closed loop (a sphere's or a
 /// revolution's longitude): column `cols` is the same node as column `0`.
 /// Rows never wrap — a pole row or a foot/lip row is a real boundary, and a
 /// contour reaching it terminates there (invariant 8).
-#[derive(Debug, Clone)]
-pub(crate) struct GridValues {
+pub(crate) struct GridValues<'a> {
     rows: usize,
     cols: usize,
     wraps: bool,
     nodes: Vec<f64>,
-    centers: Vec<f64>,
+    center_of: Box<dyn Fn(usize, usize) -> f64 + 'a>,
 }
 
-impl GridValues {
-    /// `nodes` must have `rows * cols` entries, row-major. `centers` must
-    /// have one entry per cell, row-major: `(rows - 1) * cell_cols` of them,
-    /// where `cell_cols` is `cols` if `wraps`, else `cols - 1`.
+impl std::fmt::Debug for GridValues<'_> {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("GridValues")
+            .field("rows", &self.rows)
+            .field("cols", &self.cols)
+            .field("wraps", &self.wraps)
+            .field("nodes", &self.nodes)
+            .finish_non_exhaustive()
+    }
+}
+
+impl<'a> GridValues<'a> {
+    /// `nodes` must have `rows * cols` entries, row-major. `center_of(row,
+    /// col)` must give the field's value at cell `(row, col)`'s center, for
+    /// any cell in the `(rows - 1) * cell_cols` grid of cells (`cell_cols`
+    /// is `cols` if `wraps`, else `cols - 1`) — sampling a center is pure
+    /// (invariant 4), so calling it lazily, only for the cells marching
+    /// actually needs to disambiguate, changes no result.
     pub(crate) fn new(
         rows: usize,
         cols: usize,
         wraps: bool,
         nodes: Vec<f64>,
-        centers: Vec<f64>,
+        center_of: impl Fn(usize, usize) -> f64 + 'a,
     ) -> Self {
         debug_assert_eq!(nodes.len(), rows * cols, "nodes must fill the grid exactly");
-        let cell_cols = if wraps { cols } else { cols.saturating_sub(1) };
-        debug_assert_eq!(
-            centers.len(),
-            rows.saturating_sub(1) * cell_cols,
-            "one center sample per cell"
-        );
         Self {
             rows,
             cols,
             wraps,
             nodes,
-            centers,
+            center_of: Box::new(center_of),
         }
     }
 
@@ -64,63 +80,28 @@ impl GridValues {
     }
 
     fn center(&self, row: usize, col: usize) -> f64 {
-        self.centers[row * self.cell_cols() + col]
+        (self.center_of)(row, col)
     }
-}
 
-/// A grid edge, identified by its two endpoint nodes — not by which cell
-/// asked for it — so that the (up to) two cells bordering an edge agree on
-/// the same identity. That shared identity is what lets crossings chain
-/// across a cell boundary into one polyline.
-///
-/// Ordering is arbitrary but total and fixed, which is all determinism
-/// needs: it lets [`iso_polylines`] pick chain-starting points from a
-/// canonical scan order instead of hash-map iteration order.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, PartialOrd, Ord)]
-pub(crate) enum EdgeId {
-    /// Between node `(row, col)` and node `(row, col + 1)` — the direction
-    /// that wraps, on a grid whose columns are a closed loop.
-    Horizontal { row: usize, col: usize },
-    /// Between node `(row, col)` and node `(row + 1, col)` — never wraps.
-    Vertical { row: usize, col: usize },
-}
-
-impl EdgeId {
-    /// The raw `(row, col)` of this edge's two endpoint nodes, in the order
-    /// [`EdgeCrossing::fraction`] is measured from and toward.
-    pub(crate) fn nodes(self) -> ((usize, usize), (usize, usize)) {
-        match self {
-            EdgeId::Horizontal { row, col } => ((row, col), (row, col + 1)),
-            EdgeId::Vertical { row, col } => ((row, col), (row + 1, col)),
-        }
-    }
-}
-
-/// A point where the iso level crosses one grid edge.
-#[derive(Debug, Clone, Copy, PartialEq)]
-pub(crate) struct EdgeCrossing {
-    pub(crate) edge: EdgeId,
-    /// How far along the edge, from its first node toward its second
-    /// (`EdgeId::nodes`), the crossing sits — in `[0, 1]`.
-    pub(crate) fraction: f64,
-}
-
-/// The four edges of one marching-squares cell, named by compass position.
-#[derive(Debug, Clone, Copy)]
-enum CellEdge {
-    Top,
-    Right,
-    Bottom,
-    Left,
-}
-
-impl CellEdge {
-    fn id(self, row: usize, col: usize) -> EdgeId {
-        match self {
-            CellEdge::Top => EdgeId::Horizontal { row, col },
-            CellEdge::Bottom => EdgeId::Horizontal { row: row + 1, col },
-            CellEdge::Left => EdgeId::Vertical { row, col },
-            CellEdge::Right => EdgeId::Vertical { row, col: col + 1 },
+    /// Gives a wrapping grid's seam one edge identity.
+    ///
+    /// The last cell's right edge and the first cell's left edge are the
+    /// SAME physical vertical edge on a grid whose columns close into a
+    /// loop (column `cols` is column `0`), but [`CellEdge::id`] mints them
+    /// from raw, unwrapped `(row, col)` pairs — `Vertical { col: cols }` and
+    /// `Vertical { col: 0 }` — with no knowledge of `cols` or `wraps` at that
+    /// call site. Left un-canonicalized, the two cells bordering the seam
+    /// disagree on the edge's identity, so a contour crossing it chains as
+    /// two open ends instead of one continuous loop. Canonicalizing at mint
+    /// time (here, immediately after `CellEdge::id`) rather than in the
+    /// chainer keeps `iso_polylines`'s adjacency graph itself correct, so
+    /// there is no post-hoc merge step to forget.
+    fn canonical_edge(&self, edge: EdgeId) -> EdgeId {
+        match edge {
+            EdgeId::Vertical { row, col } if self.wraps && col == self.cols => {
+                EdgeId::Vertical { row, col: 0 }
+            }
+            other => other,
         }
     }
 }
@@ -142,7 +123,7 @@ impl CellEdge {
 /// wraps) terminates there as one OPEN polyline with both endpoints on
 /// boundary edges — it is never spuriously closed into a loop, nor split
 /// into two.
-pub(crate) fn iso_polylines(grid: &GridValues, iso: f64) -> Vec<Vec<EdgeCrossing>> {
+pub(crate) fn iso_polylines(grid: &GridValues<'_>, iso: f64) -> Vec<Vec<EdgeCrossing>> {
     let inside = |value: f64| value < iso;
 
     let mut fractions: HashMap<EdgeId, f64> = HashMap::new();
@@ -163,16 +144,17 @@ pub(crate) fn iso_polylines(grid: &GridValues, iso: f64) -> Vec<Vec<EdgeCrossing
                 continue;
             }
 
-            let center_inside = inside(grid.center(row, col));
             let corners = CellCorners {
                 nw: nw_in,
                 ne: ne_in,
                 se: se_in,
                 sw: sw_in,
             };
-            for (a, b) in cell_pairs(corners, center_inside) {
-                let edge_a = a.id(row, col);
-                let edge_b = b.id(row, col);
+            // Only a saddle's two branches call this; every other corner
+            // pattern resolves without ever sampling the cell's center.
+            for (a, b) in cell_pairs(corners, || inside(grid.center(row, col))) {
+                let edge_a = grid.canonical_edge(a.id(row, col));
+                let edge_b = grid.canonical_edge(b.id(row, col));
                 fractions
                     .entry(edge_a)
                     .or_insert_with(|| edge_fraction(grid, edge_a, iso));
@@ -193,143 +175,11 @@ pub(crate) fn iso_polylines(grid: &GridValues, iso: f64) -> Vec<Vec<EdgeCrossing
 /// The two node values always differ: one is `< iso` and the other is
 /// `>= iso` by construction (this edge was reported as crossing), so the
 /// denominator is never zero.
-fn edge_fraction(grid: &GridValues, edge: EdgeId, iso: f64) -> f64 {
+fn edge_fraction(grid: &GridValues<'_>, edge: EdgeId, iso: f64) -> f64 {
     let ((r0, c0), (r1, c1)) = edge.nodes();
     let a = grid.node(r0, c0);
     let b = grid.node(r1, c1);
     (iso - a) / (b - a)
-}
-
-/// Which of a cell's four corners are inside the iso level, named by
-/// compass position.
-#[derive(Debug, Clone, Copy)]
-struct CellCorners {
-    nw: bool,
-    ne: bool,
-    se: bool,
-    sw: bool,
-}
-
-/// The pairs of edges one cell's crossings connect, given its `corners` and,
-/// for the two ambiguous diagonal cases, whether the cell's center sample is
-/// inside the iso level.
-///
-/// Exhaustive over all 16 corner combinations: the two saddle arms are the
-/// only ones a single reading of the corners cannot resolve alone.
-fn cell_pairs(corners: CellCorners, center_inside: bool) -> Vec<(CellEdge, CellEdge)> {
-    use CellEdge::{Bottom, Left, Right, Top};
-    let CellCorners { nw, ne, se, sw } = corners;
-    match (nw, ne, se, sw) {
-        (false, false, false, false) | (true, true, true, true) => vec![],
-        // One inside corner, or its complement (three inside): the same
-        // pair of edges crosses either way, isolating the singular corner.
-        (true, false, false, false) | (false, true, true, true) => vec![(Top, Left)],
-        (false, true, false, false) | (true, false, true, true) => vec![(Top, Right)],
-        (false, false, true, false) | (true, true, false, true) => vec![(Right, Bottom)],
-        (false, false, false, true) | (true, true, true, false) => vec![(Bottom, Left)],
-        // Two adjacent inside corners: one unambiguous pair.
-        (true, true, false, false) | (false, false, true, true) => vec![(Left, Right)],
-        (false, true, true, false) | (true, false, false, true) => vec![(Top, Bottom)],
-        // Saddles: diagonal corners share status, so both readings of the
-        // four crossing edges are geometrically valid; the center sample
-        // picks the one consistent with the field in between.
-        (true, false, true, false) => {
-            if center_inside {
-                vec![(Top, Right), (Bottom, Left)]
-            } else {
-                vec![(Top, Left), (Right, Bottom)]
-            }
-        }
-        (false, true, false, true) => {
-            if center_inside {
-                vec![(Top, Left), (Right, Bottom)]
-            } else {
-                vec![(Top, Right), (Bottom, Left)]
-            }
-        }
-    }
-}
-
-/// Walks the crossing-adjacency graph into polylines, in a fixed order: open
-/// chains first (their far endpoint is the crossing the walk stops at), each
-/// started from its lowest-`EdgeId` endpoint; then whatever closed loops
-/// remain, each started from its lowest-`EdgeId` crossing. Only the
-/// grid-derived `EdgeId` ordering decides where any polyline starts —
-/// never hash-map iteration order — so the result is reproducible.
-fn chain_polylines(
-    adjacency: &HashMap<EdgeId, Vec<EdgeId>>,
-    fractions: &HashMap<EdgeId, f64>,
-) -> Vec<Vec<EdgeCrossing>> {
-    let mut ids: Vec<EdgeId> = adjacency.keys().copied().collect();
-    ids.sort();
-
-    let mut visited: HashSet<EdgeId> = HashSet::new();
-    let mut polylines = Vec::new();
-
-    let extract =
-        |start: EdgeId, visited: &mut HashSet<EdgeId>, polylines: &mut Vec<Vec<EdgeCrossing>>| {
-            let chain = walk_chain(adjacency, start);
-            for &id in &chain {
-                visited.insert(id);
-            }
-            polylines.push(
-                chain
-                    .into_iter()
-                    .map(|edge| EdgeCrossing {
-                        edge,
-                        fraction: fractions[&edge],
-                    })
-                    .collect(),
-            );
-        };
-
-    for &id in &ids {
-        if !visited.contains(&id) && adjacency[&id].len() == 1 {
-            extract(id, &mut visited, &mut polylines);
-        }
-    }
-    for &id in &ids {
-        if !visited.contains(&id) {
-            extract(id, &mut visited, &mut polylines);
-        }
-    }
-
-    polylines
-}
-
-/// Walks from `start`, always stepping to the neighbor which is not where
-/// the walk just came from. Stops when it returns to `start` (closed loop —
-/// `start` is pushed again, so the chain's first and last entries match) or
-/// when it reaches another degree-one crossing (an open chain's far end).
-fn walk_chain(adjacency: &HashMap<EdgeId, Vec<EdgeId>>, start: EdgeId) -> Vec<EdgeId> {
-    let mut chain = vec![start];
-    let mut prev: Option<EdgeId> = None;
-    let mut current = start;
-
-    loop {
-        let neighbors = &adjacency[&current];
-        let next = match (neighbors.len(), prev) {
-            (1, None) | (2, None) => neighbors[0],
-            (1, Some(_)) => break,
-            (2, Some(from)) => {
-                if neighbors[0] == from {
-                    neighbors[1]
-                } else {
-                    neighbors[0]
-                }
-            }
-            _ => unreachable!("a marching-squares crossing borders at most two cells"),
-        };
-
-        chain.push(next);
-        if next == start {
-            break;
-        }
-        prev = Some(current);
-        current = next;
-    }
-
-    chain
 }
 
 #[cfg(test)]
@@ -337,19 +187,22 @@ mod tests {
     use super::*;
 
     /// A non-wrapping grid of `rows` by `cols` nodes, sampling `field` at
-    /// each node and at each cell's center (the midpoint of its four
+    /// each node, and lazily at each cell's center (the midpoint of its four
     /// corners' `(row, col)` coordinates — exact for the affine and radial
-    /// fields these tests use).
-    fn grid_of(rows: usize, cols: usize, field: impl Fn(f64, f64) -> f64) -> GridValues {
+    /// fields these tests use) — exercising the same on-demand center
+    /// sampling the contour engine relies on.
+    fn grid_of(
+        rows: usize,
+        cols: usize,
+        field: impl Fn(f64, f64) -> f64 + 'static,
+    ) -> GridValues<'static> {
         let nodes: Vec<f64> = (0..rows)
             .flat_map(|row| (0..cols).map(move |col| (row, col)))
             .map(|(row, col)| field(row as f64, col as f64))
             .collect();
-        let centers: Vec<f64> = (0..rows - 1)
-            .flat_map(|row| (0..cols - 1).map(move |col| (row, col)))
-            .map(|(row, col)| field(row as f64 + 0.5, col as f64 + 0.5))
-            .collect();
-        GridValues::new(rows, cols, false, nodes, centers)
+        GridValues::new(rows, cols, false, nodes, move |row, col| {
+            field(row as f64 + 0.5, col as f64 + 0.5)
+        })
     }
 
     fn is_closed(polyline: &[EdgeCrossing]) -> bool {
@@ -360,7 +213,7 @@ mod tests {
     fn a_circular_field_extracts_one_closed_loop_near_the_true_radius() {
         let center = (10.0, 10.0);
         let radius = 6.0;
-        let grid = grid_of(21, 21, |row, col| {
+        let grid = grid_of(21, 21, move |row, col| {
             ((row - center.0).powi(2) + (col - center.1).powi(2)).sqrt()
         });
 
@@ -427,7 +280,7 @@ mod tests {
             3,
             false,
             vec![0.0, 1.0, 2.0, 0.0, 1.0, 2.0],
-            vec![0.5, 1.5],
+            |_row, col| if col == 0 { 0.5 } else { 1.5 },
         );
 
         let polylines = iso_polylines(&grid, 1.0);
@@ -445,8 +298,9 @@ mod tests {
     #[test]
     fn saddle_cells_pick_a_pairing_deterministically_from_the_center_sample() {
         // nw and se inside, ne and sw outside: a diagonal saddle.
-        let saddle =
-            |center: f64| GridValues::new(2, 2, false, vec![-1.0, 1.0, 1.0, -1.0], vec![center]);
+        let saddle = |center: f64| {
+            GridValues::new(2, 2, false, vec![-1.0, 1.0, 1.0, -1.0], move |_, _| center)
+        };
 
         let center_inside = iso_polylines(&saddle(-1.0), 0.0);
         let center_outside = iso_polylines(&saddle(1.0), 0.0);
@@ -478,6 +332,86 @@ mod tests {
         // Repeating either reading must reproduce the exact same output.
         assert_eq!(iso_polylines(&saddle(-1.0), 0.0), center_inside);
         assert_eq!(iso_polylines(&saddle(1.0), 0.0), center_outside);
+    }
+
+    /// A wrapping grid of `rows` by `cols` nodes: `field` is sampled with a
+    /// column argument already reduced circularly (period `cols`), so a
+    /// caller may pass any real column — including the seam cell's center at
+    /// `cols - 0.5`, the circular midpoint between column `cols - 1` and
+    /// column `0` — and get the physically consistent value.
+    fn wrapping_grid_of(
+        rows: usize,
+        cols: usize,
+        field: impl Fn(f64, f64) -> f64 + 'static,
+    ) -> GridValues<'static> {
+        let nodes: Vec<f64> = (0..rows)
+            .flat_map(|row| (0..cols).map(move |col| (row, col)))
+            .map(|(row, col)| field(row as f64, col as f64))
+            .collect();
+        GridValues::new(rows, cols, true, nodes, move |row, col| {
+            field(row as f64 + 0.5, col as f64 + 0.5)
+        })
+    }
+
+    /// The circular distance from `col` to `target`, in a column space of
+    /// period `cols` — the shortest way around the wrap either direction.
+    fn circular_col_dist(col: f64, target: f64, cols: f64) -> f64 {
+        let raw = (col - target).rem_euclid(cols);
+        raw.min(cols - raw)
+    }
+
+    #[test]
+    fn a_field_straddling_the_phi_seam_closes_into_one_loop() {
+        // A circular blob centered at row 10, column 0 — the seam column
+        // itself — on a 21-row by 24-column wrapping grid. Its boundary
+        // necessarily crosses the seam's vertical edge (column 0/24) at top
+        // and bottom, which is exactly the case the seam-identity bug
+        // breaks: without canonicalization this comes out as two open
+        // chains, one per side of the seam, instead of one closed loop.
+        let cols = 24.0;
+        let radius = 4.0;
+        let grid = wrapping_grid_of(21, 24, move |row, col| {
+            let dr = row - 10.0;
+            let dc = circular_col_dist(col, 0.0, cols);
+            (dr * dr + dc * dc).sqrt()
+        });
+
+        let polylines = iso_polylines(&grid, radius);
+        assert_eq!(
+            polylines.len(),
+            1,
+            "a blob straddling the seam is one loop, not two open chains"
+        );
+        assert!(
+            is_closed(&polylines[0]),
+            "a loop crossing the phi seam must still close on itself"
+        );
+    }
+
+    #[test]
+    fn a_loop_crossing_the_phi_seam_twice_stays_one_loop() {
+        // A long horizontal band centered on row 10 that runs the full
+        // column wrap TWICE in effect: it is inside for every column (a
+        // full ring around the cylinder) between two row bounds, so its
+        // single closed contour (following the band's near edge, then
+        // wrapping the seam, then the far edge, then wrapping the seam
+        // again to close) crosses the seam's vertical edge twice yet must
+        // still chain as one loop, not split into two.
+        let grid = wrapping_grid_of(21, 24, |row, _col| (row - 10.0).abs());
+
+        let polylines = iso_polylines(&grid, 3.0);
+        assert_eq!(
+            polylines.len(),
+            2,
+            "a band with two boundaries (top and bottom of the ring) is two loops"
+        );
+        for loop_ in &polylines {
+            assert!(
+                is_closed(loop_),
+                "each boundary of a full-wrap band closes into its own loop, \
+                 crossing the seam without splitting"
+            );
+        }
     }
 
     #[test]

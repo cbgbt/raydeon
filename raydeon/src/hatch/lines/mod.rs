@@ -2,10 +2,15 @@
 //! lighting calls for.
 //!
 //! Lines are generated in the surface's own frame, where clipping to the
-//! outline and skipping holes is interval arithmetic, then lifted into world
-//! space for the renderer to occlude like any other geometry.
+//! outline and skipping holes is interval arithmetic (`clip`), then lifted
+//! into world space for the renderer to occlude like any other geometry.
 
-use super::surface::{FaceBox, PlanarSurface, RevolutionSurface, SphereSurface};
+mod clip;
+mod revolution;
+
+pub(crate) use clip::{clip_to_outline, subtract_holes};
+
+use super::surface::{PlanarSurface, RevolutionSurface, SphereSurface};
 use super::HatchSpacing;
 use crate::path::SlicedSegment3D;
 use crate::ray::HitShape;
@@ -49,8 +54,8 @@ pub(crate) fn planar(
     let dir = FaceVec::new(angle.radians.cos(), angle.radians.sin());
     let perp = FaceVec::new(-dir.y, dir.x);
 
-    let (off_min, off_max) = extent_along(surface, perp);
-    let (t_min, t_max) = extent_along(surface, dir);
+    let (off_min, off_max) = clip::extent_along(surface, perp);
+    let (t_min, t_max) = clip::extent_along(surface, dir);
     let lift = surface.normal() * LINE_LIFT;
 
     let mut segments = Vec::new();
@@ -105,98 +110,7 @@ pub(crate) fn sphere_rings(
     segments
 }
 
-/// Rings around the axis, one every `spacing` of profile arc length,
-/// emitted as chords short enough to be shaded individually and lifted off
-/// the surface along its own outward normal.
-pub(crate) fn revolution_rings(
-    surface: &RevolutionSurface,
-    spacing: HatchSpacing,
-) -> Vec<LineSegment3D<WorldSpace>> {
-    let spacing = spacing.into_inner();
-    let arc_length = surface.arc_length();
-    if arc_length < MIN_INTERVAL {
-        return Vec::new();
-    }
-
-    let mut segments = Vec::new();
-    let mut t = spacing / 2.0;
-    while t < arc_length {
-        segments.extend(revolution_ring_at(surface, t));
-        t += spacing;
-    }
-    segments
-}
-
-/// The chords of one ring at profile arc length `t`, or none if the ring is
-/// too small a circle to draw usefully.
-fn revolution_ring_at(surface: &RevolutionSurface, t: f64) -> Vec<LineSegment3D<WorldSpace>> {
-    let radius = revolution_radius_at(surface, t);
-    let chords = ((radius * std::f64::consts::TAU) / SAMPLE_LEN).ceil() as usize;
-    if chords < 8 {
-        return Vec::new();
-    }
-    let at = |ndx: usize| {
-        let angle =
-            euclid::Angle::radians((ndx % chords) as f64 / chords as f64 * std::f64::consts::TAU);
-        revolution_lifted_point(surface, t, angle)
-    };
-    (0..chords)
-        .map(|ndx| LineSegment3D::new_segment(at(ndx), at(ndx + 1)))
-        .collect()
-}
-
-/// Meridians: profile curves repeated every `spacing` of arc length around
-/// the widest ring, each subdivided at [`SAMPLE_LEN`] along the profile so
-/// shading can chop them individually.
-pub(crate) fn revolution_meridians(
-    surface: &RevolutionSurface,
-    spacing: HatchSpacing,
-) -> Vec<LineSegment3D<WorldSpace>> {
-    let spacing = spacing.into_inner();
-    let max_radius = surface.max_radius();
-    let arc_length = surface.arc_length();
-    if max_radius < MIN_INTERVAL || arc_length < MIN_INTERVAL {
-        return Vec::new();
-    }
-
-    let steps = ((max_radius * std::f64::consts::TAU) / spacing).floor() as usize;
-    if steps == 0 {
-        return Vec::new();
-    }
-    let samples = ((arc_length / SAMPLE_LEN).ceil() as usize).max(1);
-
-    let mut segments = Vec::new();
-    for step in 0..steps {
-        let angle = euclid::Angle::radians(step as f64 / steps as f64 * std::f64::consts::TAU);
-        let at = |sample: usize| {
-            let t = sample as f64 / samples as f64 * arc_length;
-            revolution_lifted_point(surface, t, angle)
-        };
-        segments.extend(
-            (0..samples).map(|sample| LineSegment3D::new_segment(at(sample), at(sample + 1))),
-        );
-    }
-    segments
-}
-
-/// The perpendicular distance from the axis at profile arc length `t`.
-fn revolution_radius_at(surface: &RevolutionSurface, t: f64) -> f64 {
-    let point = surface.point_at(t, euclid::Angle::radians(0.0));
-    let offset = point - surface.base();
-    let along_axis = offset.dot(surface.axis());
-    (offset - surface.axis() * along_axis).length()
-}
-
-/// The world position at profile arc length `t` and `angle`, lifted off the
-/// surface along its own outward normal so the drawn arc survives its own
-/// occlusion check.
-fn revolution_lifted_point(
-    surface: &RevolutionSurface,
-    t: f64,
-    angle: euclid::Angle<f64>,
-) -> WPoint3 {
-    surface.point_at(t, angle) + surface.normal_at(t, angle) * LINE_LIFT
-}
+pub(crate) use revolution::{revolution_meridians, revolution_rings};
 
 /// Keeps the stretches of `segment` whose illumination passes `keep`,
 /// rejoining stretches separated by a single rejected sample so that shading
@@ -275,125 +189,11 @@ pub(crate) fn ring_frame(axis: WVec3) -> (WVec3, WVec3) {
     (u, axis.cross(u))
 }
 
-/// The range the outline spans along `direction`.
-fn extent_along(surface: &PlanarSurface, direction: FaceVec) -> (f64, f64) {
-    surface
-        .outline()
-        .iter()
-        .map(|corner| corner.to_vector().dot(direction))
-        .fold((f64::MAX, f64::MIN), |(lo, hi), value| {
-            (lo.min(value), hi.max(value))
-        })
-}
-
-/// Clips the line `anchor + t * dir` to the convex outline, returning the
-/// range of `t` inside it.
-///
-/// `pub(crate)`: the contour engine's planar clip step (`hatch::contour`)
-/// reuses this same interval math for arbitrary marching-squares segments,
-/// not just axis-aligned hatch lines.
-pub(crate) fn clip_to_outline(
-    surface: &PlanarSurface,
-    anchor: FaceVec,
-    dir: FaceVec,
-    t_min: f64,
-    t_max: f64,
-) -> Option<(f64, f64)> {
-    let outline = surface.outline();
-    let mut lo = t_min - 1.0;
-    let mut hi = t_max + 1.0;
-    let corners = outline.len();
-
-    for ndx in 0..corners {
-        let a = outline[ndx];
-        let b = outline[(ndx + 1) % corners];
-        // Inward normal of the edge, for a counter-clockwise outline.
-        let edge = b - a;
-        let inward = FaceVec::new(-edge.y, edge.x);
-
-        let denom = inward.dot(dir);
-        let dist = inward.dot(a.to_vector() - anchor);
-        if denom.abs() < 1.0e-12 {
-            // Parallel to the edge: either wholly inside it or wholly outside.
-            if dist > 0.0 {
-                return None;
-            }
-            continue;
-        }
-        let t = dist / denom;
-        if denom > 0.0 {
-            lo = lo.max(t);
-        } else {
-            hi = hi.min(t);
-        }
-    }
-
-    (hi - lo > 1.0e-9).then_some((lo, hi))
-}
-
-/// Splits `span` around the stretches where the line passes through a hole.
-///
-/// `pub(crate)`: shared with the contour engine's planar clip step, for the
-/// same reason as `clip_to_outline`.
-pub(crate) fn subtract_holes(
-    holes: &[FaceBox],
-    anchor: FaceVec,
-    dir: FaceVec,
-    span: (f64, f64),
-) -> Vec<(f64, f64)> {
-    let mut cuts: Vec<(f64, f64)> = holes
-        .iter()
-        .filter_map(|hole| hole_span(hole, anchor, dir))
-        .collect();
-    cuts.sort_by(|a, b| a.0.total_cmp(&b.0));
-
-    let mut remaining = Vec::new();
-    let mut cursor = span.0;
-    for (cut_lo, cut_hi) in cuts {
-        if cut_hi < cursor || cut_lo > span.1 {
-            continue;
-        }
-        if cut_lo > cursor {
-            remaining.push((cursor, cut_lo));
-        }
-        cursor = cursor.max(cut_hi);
-    }
-    if cursor < span.1 {
-        remaining.push((cursor, span.1));
-    }
-    remaining
-}
-
-/// The range of `t` for which `anchor + t * dir` lies within `hole`, by slab
-/// intersection on each axis.
-fn hole_span(hole: &FaceBox, anchor: FaceVec, dir: FaceVec) -> Option<(f64, f64)> {
-    let axes = [
-        (anchor.x, dir.x, hole.min.x, hole.max.x),
-        (anchor.y, dir.y, hole.min.y, hole.max.y),
-    ];
-
-    let mut lo = f64::NEG_INFINITY;
-    let mut hi = f64::INFINITY;
-    for (origin, direction, slab_lo, slab_hi) in axes {
-        if direction.abs() < 1.0e-12 {
-            if origin < slab_lo || origin > slab_hi {
-                return None;
-            }
-            continue;
-        }
-        let first = (slab_lo - origin) / direction;
-        let second = (slab_hi - origin) / direction;
-        lo = lo.max(first.min(second));
-        hi = hi.min(first.max(second));
-    }
-    (hi > lo).then_some((lo, hi))
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
     use crate::hatch::style::HatchSpacing;
-    use crate::hatch::surface::{FacePoint, ProfilePoint};
+    use crate::hatch::surface::{FaceBox, FacePoint, ProfilePoint};
     use proptest::prelude::*;
 
     fn spacing(value: f64) -> HatchSpacing {

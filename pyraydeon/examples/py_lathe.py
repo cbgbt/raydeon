@@ -31,7 +31,19 @@ from pyraydeon import (
     RevolutionSurface,
     Scene,
     Stroke,
+    StrokeKind,
 )
+
+# Distinct stroke widths per `StrokeKind`, matching the rust examples
+# (storefront's `write_svg`): outlines heaviest, hatching lighter, contours
+# lightest — so the three concepts read apart on paper, not just in code.
+# `StrokeKind` supports `==` but not hashing, so this is a list of pairs
+# rather than a dict.
+STROKE_WIDTHS = [
+    (StrokeKind.Outline, "1.1mm"),
+    (StrokeKind.Hatch, "0.7mm"),
+    (StrokeKind.Contour, "0.45mm"),
+]
 
 LIGHT = np.array([-5.0, -6.0, 9.0])
 
@@ -234,18 +246,26 @@ backing_rect = svg.Rect(
     height="100%",
     fill="white",
 )
-svg_lines = [
-    svg.Line(
-        x1=f"{stroke.p1[0]}",
-        y1=f"{stroke.p1[1]}",
-        x2=f"{stroke.p2[0]}",
-        y2=f"{stroke.p2[1]}",
-        stroke_width="0.7mm",
-        stroke="black",
+kind_groups = [
+    svg.G(
+        elements=[
+            svg.Line(
+                x1=f"{stroke.p1[0]}",
+                y1=f"{stroke.p1[1]}",
+                x2=f"{stroke.p2[0]}",
+                y2=f"{stroke.p2[1]}",
+                stroke="black",
+            )
+            for stroke in strokes
+            if stroke.kind == kind
+        ],
+        stroke_width=width,
     )
-    for stroke in strokes
+    for kind, width in STROKE_WIDTHS
 ]
-line_group = svg.G(transform=f"translate(0, {height}) scale(1, -1)", elements=svg_lines)
+line_group = svg.G(
+    transform=f"translate(0, {height}) scale(1, -1)", elements=kind_groups
+)
 canvas.elements = [backing_rect, line_group]
 
 

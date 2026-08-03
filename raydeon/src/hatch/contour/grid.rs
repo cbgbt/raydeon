@@ -45,16 +45,6 @@ impl SurfaceGrid {
     pub(crate) fn node(&self, row: usize, col: usize) -> (WPoint3, WVec3) {
         self.nodes[row * self.cols + (col % self.cols)]
     }
-
-    /// How many cell columns this grid has: `cols` if it wraps (the last
-    /// cell closes the seam back to column 0), else `cols - 1`.
-    pub(crate) fn cell_cols(&self) -> usize {
-        if self.wraps {
-            self.cols
-        } else {
-            self.cols - 1
-        }
-    }
 }
 
 /// The grid `style.resolution()` calls for over `surface`, in whichever
@@ -229,7 +219,7 @@ mod tests {
         let grid = planar_grid(&surface, 1.0);
         assert_eq!(grid.rows, 5);
         assert_eq!(grid.cols, 5);
-        assert_eq!(grid.cell_cols(), 4);
+        assert!(!grid.wraps, "cell columns are cols - 1 when not wrapping");
     }
 
     #[test]
@@ -346,23 +336,22 @@ mod tests {
             .flat_map(|row| (0..grid.cols).map(move |col| (row, col)))
             .map(|(row, col)| value_at(row, col))
             .collect();
-        let centers: Vec<f64> = (0..grid.rows - 1)
-            .flat_map(|row| (0..grid.cell_cols()).map(move |col| (row, col)))
-            .map(|(row, col)| {
-                // The average of the cell's four corners, matching how the
-                // contour engine itself samples a saddle's center.
-                let corners = [
-                    value_at(row, col),
-                    value_at(row, col + 1),
-                    value_at(row + 1, col),
-                    value_at(row + 1, col + 1),
-                ];
-                corners.iter().sum::<f64>() / 4.0
-            })
-            .collect();
+
+        // The average of the cell's four corners, matching how the contour
+        // engine itself samples a saddle's center — sampled lazily, the same
+        // way `sample_grid` samples it, not precomputed for every cell.
+        let center_at = move |row: usize, col: usize| {
+            let corners = [
+                value_at(row, col),
+                value_at(row, col + 1),
+                value_at(row + 1, col),
+                value_at(row + 1, col + 1),
+            ];
+            corners.iter().sum::<f64>() / 4.0
+        };
 
         let values = crate::hatch::contour::march::GridValues::new(
-            grid.rows, grid.cols, grid.wraps, nodes, centers,
+            grid.rows, grid.cols, grid.wraps, nodes, center_at,
         );
         let polylines = crate::hatch::contour::march::iso_polylines(&values, 0.0);
 
