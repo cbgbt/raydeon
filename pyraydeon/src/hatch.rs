@@ -122,15 +122,17 @@ impl PlanarSurface {
 }
 
 /// Reads a 2D numpy array as rows of a fixed width.
+///
+/// Iterates row-by-row rather than reading the backing buffer as a flat
+/// slice: a caller-side transform such as `arr[:, ::-1]` produces a
+/// non-contiguous view, and rejecting that as malshaped would be reporting
+/// a memory-layout accident as a caller error.
 fn rows(array: &PyArrayLike2<'_, f64>, width: usize, complaint: &str) -> PyResult<Vec<Vec<f64>>> {
     let array = array.as_array();
-    let flat = array
-        .as_slice()
-        .ok_or_else(|| PyIndexError::new_err(complaint.to_owned()))?;
     if array.ncols() != width {
         return Err(PyIndexError::new_err(complaint.to_owned()));
     }
-    Ok(flat.chunks(width).map(<[f64]>::to_vec).collect())
+    Ok(array.rows().into_iter().map(|row| row.to_vec()).collect())
 }
 
 pywrap!(SphereSurface, raydeon::SphereSurface);

@@ -1,13 +1,11 @@
 import svg
 
 from pyraydeon import (
-    AABB3,
     Camera,
+    CollisionGeometry,
     Geometry,
-    HitData,
     LineSegment3D,
     Point3,
-    Ray,
     Scene,
     Stroke,
     Tri,
@@ -19,17 +17,11 @@ class CustomTriangle(Geometry):
     def __init__(self, p1: Point3, p2: Point3, p3: Point3) -> None:
         self.tri = Tri(p1, p2, p3)
 
-    def collision_geometry(self) -> list["CustomTriangle"]:
-        return [self]
-
-    def hit_by(self, ray: Ray) -> HitData | None:
-        return self.tri.hit_by(ray)
+    def collision_geometry(self) -> list[CollisionGeometry]:
+        return self.tri.collision_geometry()
 
     def paths(self, cam: Camera) -> list[LineSegment3D]:
         return self.tri.paths(cam)
-
-    def bounding_box(self) -> AABB3:
-        return self.tri.bounding_box()
 
 
 scene = Scene(
