@@ -5,6 +5,13 @@
 //! plain arrays; they are parsed here, once, so that everything downstream
 //! works with a surface which is known to make sense.
 
+// `#[pymethods]` here expands into hidden trampoline functions (one per
+// method) that call `.into()` on an already-`PyErr` error; pyo3 forwards
+// only `#[cfg]` attributes from the annotated methods into those trampolines,
+// so an `#[allow]` on the impl block or its methods cannot reach them. This
+// module is the smallest scope the generated code actually respects.
+#![allow(clippy::useless_conversion)]
+
 use numpy::{Ix1, PyArray, PyArrayLike2};
 use pyo3::exceptions::{PyIndexError, PyTypeError, PyValueError};
 use pyo3::prelude::*;
@@ -54,10 +61,14 @@ pywrap!(PlanarSurface, raydeon::PlanarSurface);
 impl PlanarSurface {
     /// A convex planar patch of a shape's surface.
     ///
-    /// `basis` is a 2x3 array of perpendicular in-plane vectors whose cross
-    /// product points away from the shape. `outline` is an Nx2 array of
-    /// corners, and `holes` an Nx4 array of `(min_x, min_y, max_x, max_y)`
-    /// openings, both written in units of those basis vectors.
+    /// `basis` is a 2x3 array of in-plane vectors whose cross product points
+    /// away from the shape; they need not be perpendicular — a skewed basis
+    /// is orthonormalized and the outline re-expressed exactly. `outline` is
+    /// an Nx2 array of corners, and `holes` an Nx4 array of
+    /// `(min_x, min_y, max_x, max_y)` openings, both written in units of
+    /// those basis vectors. A skewed basis combined with holes raises
+    /// `ValueError`: holes are axis-aligned in the caller's frame, and a
+    /// shear would deform them into shapes no rectangle can represent.
     #[new]
     #[pyo3(signature = (origin, basis, outline, holes=None))]
     fn new(

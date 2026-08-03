@@ -1,10 +1,17 @@
+// `#[pymethods]` here expands into hidden trampoline functions (one per
+// method) that call `.into()` on an already-`PyErr` error; pyo3 forwards
+// only `#[cfg]` attributes from the annotated methods into those trampolines,
+// so an `#[allow]` on the impl block or its methods cannot reach them. This
+// module is the smallest scope the generated code actually respects.
+#![allow(clippy::useless_conversion)]
+
 use std::sync::Arc;
 
 use numpy::{Ix1, PyArray};
 use pyo3::prelude::*;
 
 use crate::camera::Camera;
-use crate::material::Material;
+use crate::material::{Material, PenId};
 use crate::shapes::Geometry;
 
 #[derive(Debug)]
@@ -108,7 +115,7 @@ pub(crate) fn raydeon_geometry_from_py_object(
 pub(crate) struct Stroke {
     p1: [f64; 2],
     p2: [f64; 2],
-    pen: usize,
+    pen: PenId,
     kind: StrokeKind,
 }
 
@@ -117,7 +124,7 @@ impl From<&raydeon::Stroke> for Stroke {
         Self {
             p1: value.p1.to_array(),
             p2: value.p2.to_array(),
-            pen: value.pen.value(),
+            pen: value.pen.into(),
             kind: value.kind.into(),
         }
     }
@@ -136,8 +143,8 @@ impl Stroke {
     }
 
     #[getter]
-    fn pen(&self) -> usize {
-        self.pen
+    fn pen(&self) -> PenId {
+        self.pen.clone()
     }
 
     #[getter]

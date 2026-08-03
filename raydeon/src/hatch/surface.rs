@@ -36,10 +36,15 @@ pub enum HatchSurface {
 #[derive(Debug, Snafu)]
 pub enum PlanarSurfaceError {
     #[snafu(display(
-        "the basis vectors must be non-zero and perpendicular to describe the frame the \
+        "the basis vectors must be non-zero and non-parallel to describe the frame the \
          outline is written in"
     ))]
     DegenerateBasis,
+    #[snafu(display(
+        "the basis vectors are skewed, which would deform rectangular holes into shapes a \
+         FaceBox cannot represent; use a perpendicular basis, or drop the holes"
+    ))]
+    SkewedBasisWithHoles,
     #[snafu(display("an outline needs at least three corners enclosing some area, but had {corners} corners enclosing {area}"))]
     OutlineTooSmall { corners: usize, area: f64 },
     #[snafu(display("the outline turns back on itself at corner {corner}, and hatch lines can only be clipped to a convex outline"))]
@@ -74,39 +79,56 @@ impl PlanarSurface {
     /// vectors, and an outline with holes expressed in units of those
     /// vectors.
     ///
-    /// The basis is normalized and the outline and holes are re-expressed in
-    /// the normalized frame, so callers may describe a face in whatever scale
-    /// suits it. A clockwise outline is reversed to counter-clockwise, which
-    /// is the winding the outward normal `basis[0].cross(basis[1])` implies.
+    /// The basis is Gram-Schmidt orthonormalized (`e0` along `basis[0]`; `e1`
+    /// from `basis[1]` with its `e0` component removed) and the outline is
+    /// re-expressed EXACTLY in the orthonormal frame, so callers may describe
+    /// a face with any non-degenerate basis — including a skewed (non-
+    /// perpendicular) one — and the outline still lands at the world
+    /// positions they intended. A clockwise outline is reversed to
+    /// counter-clockwise, which is the winding the outward normal
+    /// `e0.cross(e1)` implies.
+    ///
+    /// Holes are axis-aligned [`FaceBox`]es in the caller's frame; a skewed
+    /// basis would shear them into parallelograms a `FaceBox` cannot
+    /// represent, so a skewed basis combined with holes is rejected as
+    /// [`PlanarSurfaceError::SkewedBasisWithHoles`] rather than silently
+    /// deformed.
     pub fn try_new(
         origin: WPoint3,
         basis: [WVec3; 2],
         outline: Vec<FacePoint>,
         holes: Vec<FaceBox>,
     ) -> Result<Self, PlanarSurfaceError> {
-        let [scale_x, scale_y] = [basis[0].length(), basis[1].length()];
+        let scale_x = basis[0].length();
+        let len_b1 = basis[1].length();
         ensure!(
-            scale_x > MIN_EXTENT && scale_y > MIN_EXTENT,
+            scale_x > MIN_EXTENT && len_b1 > MIN_EXTENT,
             DegenerateBasisSnafu
         );
-        let basis = [basis[0] / scale_x, basis[1] / scale_y];
+        let e0 = basis[0] / scale_x;
+        let b1_along_e0 = basis[1].dot(e0);
+        let skew = (b1_along_e0 / len_b1).abs();
         ensure!(
-            basis[0].dot(basis[1]).abs() <= MAX_SKEW,
-            DegenerateBasisSnafu
+            skew <= MAX_SKEW || holes.is_empty(),
+            SkewedBasisWithHolesSnafu
         );
 
-        let outline: Vec<FacePoint> = outline
-            .into_iter()
-            .map(|p| FacePoint::new(p.x * scale_x, p.y * scale_y))
-            .collect();
+        let e1_raw = basis[1] - e0 * b1_along_e0;
+        let scale_y = e1_raw.length();
+        ensure!(scale_y > MIN_EXTENT, DegenerateBasisSnafu);
+        let e1 = e1_raw / scale_y;
+        let basis = [e0, e1];
+
+        // (x, y) ↦ (x·|b0| + y·(b1·e0), y·|b1 − (b1·e0)e0|): re-expresses the
+        // caller's frame exactly in the orthonormal one; b1_along_e0 = 0 (the
+        // perpendicular case) degenerates to independent per-axis scaling.
+        let re_express =
+            |p: FacePoint| FacePoint::new(p.x * scale_x + p.y * b1_along_e0, p.y * scale_y);
+
+        let outline: Vec<FacePoint> = outline.into_iter().map(re_express).collect();
         let holes = holes
             .into_iter()
-            .map(|hole| {
-                FaceBox::new(
-                    FacePoint::new(hole.min.x * scale_x, hole.min.y * scale_y),
-                    FacePoint::new(hole.max.x * scale_x, hole.max.y * scale_y),
-                )
-            })
+            .map(|hole| FaceBox::new(re_express(hole.min), re_express(hole.max)))
             .collect();
 
         let area = signed_area(&outline);
@@ -311,19 +333,72 @@ mod tests {
     }
 
     #[test]
-    fn a_basis_which_is_not_a_frame_is_no_surface() {
+    fn a_degenerate_basis_is_no_surface() {
         assert!(matches!(
             plane([WVec3::zero(), WVec3::new(0.0, 1.0, 0.0)], unit_square()),
             Err(PlanarSurfaceError::DegenerateBasis)
         ));
-        // A skewed basis would turn rectangular holes into parallelograms.
+        // basis[1] parallel to basis[0]: nothing left after removing the e0 component.
         assert!(matches!(
             plane(
-                [WVec3::new(1.0, 0.0, 0.0), WVec3::new(1.0, 1.0, 0.0)],
+                [WVec3::new(1.0, 0.0, 0.0), WVec3::new(2.0, 0.0, 0.0)],
                 unit_square()
             ),
             Err(PlanarSurfaceError::DegenerateBasis)
         ));
+    }
+
+    #[test]
+    fn a_skewed_hole_less_basis_is_gram_schmidted_and_the_outline_re_expressed_exactly() {
+        // A rhombus basis: not perpendicular, but a legal frame absent holes.
+        let rhombus = [WVec3::new(1.0, 0.0, 0.0), WVec3::new(1.0, 1.0, 0.0)];
+        let surface = plane(rhombus, unit_square())
+            .expect("a skewed hole-less basis is accepted, not rejected");
+
+        // The outward normal is preserved: e0 x e1 is parallel to b0 x b1 (both +Z here).
+        assert_eq!(surface.normal(), WVec3::new(0.0, 0.0, 1.0));
+
+        // Every outline corner must land at the exact world position the caller's
+        // (skewed) basis implies: origin + x*b0 + y*b1.
+        for (face, world) in unit_square().into_iter().zip([
+            WPoint3::new(0.0, 0.0, 0.0),
+            WPoint3::new(1.0, 0.0, 0.0),
+            WPoint3::new(2.0, 1.0, 0.0),
+            WPoint3::new(1.0, 1.0, 0.0),
+        ]) {
+            let expected = WPoint3::zero() + rhombus[0] * face.x + rhombus[1] * face.y;
+            assert_eq!(expected, world, "test fixture sanity check");
+        }
+        for (corner, expected_world) in surface.outline().iter().zip([
+            WPoint3::new(0.0, 0.0, 0.0),
+            WPoint3::new(1.0, 0.0, 0.0),
+            WPoint3::new(2.0, 1.0, 0.0),
+            WPoint3::new(1.0, 1.0, 0.0),
+        ]) {
+            assert_eq!(surface.to_world(*corner), expected_world);
+        }
+    }
+
+    #[test]
+    fn a_skewed_basis_with_holes_is_no_surface() {
+        let rhombus = [WVec3::new(1.0, 0.0, 0.0), WVec3::new(1.0, 1.0, 0.0)];
+        let hole = FaceBox::new(FacePoint::new(0.25, 0.25), FacePoint::new(0.75, 0.75));
+        assert!(matches!(
+            PlanarSurface::try_new(WPoint3::zero(), rhombus, unit_square(), vec![hole]),
+            Err(PlanarSurfaceError::SkewedBasisWithHoles)
+        ));
+    }
+
+    #[test]
+    fn a_perpendicular_basis_with_holes_is_unaffected_by_the_skew_gate() {
+        let hole = FaceBox::new(FacePoint::new(0.25, 0.25), FacePoint::new(0.75, 0.75));
+        let surface =
+            PlanarSurface::try_new(WPoint3::zero(), xy_basis(), unit_square(), vec![hole])
+                .expect("a perpendicular basis with holes is a surface");
+        assert_eq!(
+            surface.holes()[0],
+            FaceBox::new(FacePoint::new(0.25, 0.25), FacePoint::new(0.75, 0.75))
+        );
     }
 
     #[test]

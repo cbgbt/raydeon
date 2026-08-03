@@ -1,3 +1,10 @@
+// `#[pymethods]` here expands into hidden trampoline functions (one per
+// method) that call `.into()` on an already-`PyErr` error; pyo3 forwards
+// only `#[cfg]` attributes from the annotated methods into those trampolines,
+// so an `#[allow]` on the impl block or its methods cannot reach them. This
+// module is the smallest scope the generated code actually respects.
+#![allow(clippy::useless_conversion)]
+
 use numpy::{Ix1, PyArray};
 use pyo3::exceptions::PyValueError;
 use pyo3::prelude::*;

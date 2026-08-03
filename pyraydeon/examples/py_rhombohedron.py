@@ -96,30 +96,30 @@ class Rhombohedron(Geometry):
         return paths
 
     def hatch_surfaces(self) -> list[PlanarSurface]:
-        """Each face, in a frame whose third axis points out of the solid.
+        """Each face, in the (possibly skewed) frame its own edges define.
 
-        The faces are rhombi, so their edges are no frame to write an outline
-        in; the outline is re-expressed on a perpendicular pair instead.
+        The faces are rhombi, not rectangles, but `PlanarSurface` now
+        Gram-Schmidt orthonormalizes whatever basis it is given and
+        re-expresses the outline exactly — so the rhombus edge basis is
+        passed straight through, with no hand-rolled orthonormalization here.
         """
+        unit_square = np.array([[0.0, 0.0], [1.0, 0.0], [1.0, 1.0], [0.0, 1.0]])
         centroid = np.mean(self.vertices, axis=0)
         surfaces = []
         for face in self.faces:
             verts = self.vertices[face]
             origin = verts[0]
+            b0 = verts[1] - origin
+            b1 = verts[3] - origin
 
-            normal = np.cross(verts[1] - origin, verts[3] - origin)
-            normal = normal / np.linalg.norm(normal)
+            normal = np.cross(b0, b1)
             if np.dot(normal, origin - centroid) < 0:
-                normal = -normal
+                b0, b1 = b1, b0
+                outline = unit_square[:, ::-1]
+            else:
+                outline = unit_square
 
-            right = verts[1] - origin
-            right = right / np.linalg.norm(right)
-            up = np.cross(normal, right)
-
-            outline = np.array(
-                [[np.dot(v - origin, right), np.dot(v - origin, up)] for v in verts]
-            )
-            surfaces.append(PlanarSurface(origin, np.array([right, up]), outline))
+            surfaces.append(PlanarSurface(origin, np.array([b0, b1]), outline))
         return surfaces
 
 
