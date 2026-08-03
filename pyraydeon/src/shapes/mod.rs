@@ -5,7 +5,7 @@
 // module is the smallest scope the generated code actually respects.
 #![allow(clippy::useless_conversion)]
 
-use primitive::{Plane, Quad, Sphere};
+use primitive::{Lathe, Plane, Quad, Sphere};
 use pyo3::prelude::*;
 use pyo3::types::{PyDict, PyTuple};
 use raydeon::WorldSpace;
@@ -327,6 +327,7 @@ pub(crate) fn register(m: &Bound<'_, PyModule>) -> PyResult<()> {
     m.add_class::<Plane>()?;
     m.add_class::<Quad>()?;
     m.add_class::<Sphere>()?;
+    m.add_class::<Lathe>()?;
     m.add_class::<Geometry>()?;
     m.add_class::<CollisionGeometry>()?;
     Ok(())

@@ -1,4 +1,5 @@
 use super::{CollisionGeometry, Geometry};
+use crate::hatch::rows;
 use crate::linear::{Point3, Vec3};
 use numpy::{Ix1, PyArray, PyArrayLike1, PyArrayLike2};
 use pyo3::exceptions::PyIndexError;
@@ -239,6 +240,52 @@ impl Quad {
                 .origin(origin.0.cast_unit())
                 .basis(basis)
                 .dims(dims)
+                .build(),
+        );
+        let geom = Geometry::native(Arc::clone(&shape) as Arc<dyn raydeon::Shape>);
+        Ok((Self(shape), geom))
+    }
+}
+
+#[pyclass(frozen, extends=Geometry, subclass)]
+pub(crate) struct Lathe(pub(crate) Arc<raydeon::shapes::Lathe>);
+
+impl ::std::ops::Deref for Lathe {
+    type Target = Arc<raydeon::shapes::Lathe>;
+
+    fn deref(&self) -> &Self::Target {
+        &self.0
+    }
+}
+
+impl From<Arc<raydeon::shapes::Lathe>> for Lathe {
+    fn from(value: Arc<raydeon::shapes::Lathe>) -> Self {
+        Self(value)
+    }
+}
+
+#[pymethods]
+impl Lathe {
+    /// A wheel-thrown form: a radial profile spun around a vertical axis
+    /// through `base`.
+    ///
+    /// `profile` is an Nx2 array of `(radius, height)` points from foot to
+    /// lip, in world units.
+    #[new]
+    fn new(base: &Bound<'_, PyAny>, profile: PyArrayLike2<'_, f64>) -> PyResult<(Self, Geometry)> {
+        let base: Point3 = base.try_into()?;
+        let profile = rows(&profile, 2, "profile must be an Nx2 array")?
+            .into_iter()
+            .map(|point| raydeon::ProfilePoint {
+                radius: point[0],
+                height: point[1],
+            })
+            .collect();
+
+        let shape = Arc::new(
+            raydeon::shapes::Lathe::new()
+                .base(base.0.cast_unit())
+                .profile(profile)
                 .build(),
         );
         let geom = Geometry::native(Arc::clone(&shape) as Arc<dyn raydeon::Shape>);

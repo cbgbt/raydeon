@@ -55,6 +55,59 @@ fn hatch_spacing(spacing: f64) -> PyResult<raydeon::HatchSpacing> {
     raydeon::HatchSpacing::try_new(spacing).map_err(|err| PyValueError::new_err(err.to_string()))
 }
 
+pywrap!(ContourStyle, raydeon::ContourStyle);
+
+#[pymethods]
+impl ContourStyle {
+    /// Which iso-contours a material draws over its hatch surfaces.
+    ///
+    /// `tone` is a list of tone thresholds, each becoming its own shadow-edge
+    /// contour; `silhouette` adds the occluding contour of curved surfaces;
+    /// an omitted `resolution` samples at the same world-space spacing
+    /// hatching's own tone filter uses.
+    #[new]
+    #[pyo3(signature = (*, tone=None, silhouette=false, resolution=None))]
+    fn new(tone: Option<Vec<f64>>, silhouette: bool, resolution: Option<f64>) -> PyResult<Self> {
+        let mut fields = tone
+            .unwrap_or_default()
+            .into_iter()
+            .map(|value| {
+                raydeon::ToneThreshold::try_new(value)
+                    .map(raydeon::ContourField::Tone)
+                    .map_err(|err| PyValueError::new_err(err.to_string()))
+            })
+            .collect::<PyResult<Vec<_>>>()?;
+        if silhouette {
+            fields.push(raydeon::ContourField::Silhouette);
+        }
+
+        let resolution = resolution
+            .map(|value| {
+                raydeon::ContourResolution::try_new(value)
+                    .map_err(|err| PyValueError::new_err(err.to_string()))
+            })
+            .transpose()?;
+
+        Ok(raydeon::ContourStyle::new()
+            .fields(fields)
+            .maybe_resolution(resolution)
+            .build()
+            .into())
+    }
+
+    /// One tone contour per band edge `style` steps at — the convenience for
+    /// matching a hatch style's own discrete tones.
+    #[staticmethod]
+    fn band_edges(style: &HatchStyle) -> Self {
+        raydeon::ContourStyle::band_edges(&style.0).into()
+    }
+
+    fn __repr__(slf: &Bound<'_, Self>) -> PyResult<String> {
+        let class_name = slf.get_type().qualname()?;
+        Ok(format!("{}<{:#?}>", class_name, slf.borrow().0))
+    }
+}
+
 pywrap!(PlanarSurface, raydeon::PlanarSurface);
 
 #[pymethods]
@@ -127,7 +180,11 @@ impl PlanarSurface {
 /// slice: a caller-side transform such as `arr[:, ::-1]` produces a
 /// non-contiguous view, and rejecting that as malshaped would be reporting
 /// a memory-layout accident as a caller error.
-fn rows(array: &PyArrayLike2<'_, f64>, width: usize, complaint: &str) -> PyResult<Vec<Vec<f64>>> {
+pub(crate) fn rows(
+    array: &PyArrayLike2<'_, f64>,
+    width: usize,
+    complaint: &str,
+) -> PyResult<Vec<Vec<f64>>> {
     let array = array.as_array();
     if array.ncols() != width {
         return Err(PyIndexError::new_err(complaint.to_owned()));
@@ -241,6 +298,7 @@ pub(crate) fn hatch_surface_into_py(py: Python<'_>, surface: raydeon::HatchSurfa
 
 pub(crate) fn register(m: &Bound<'_, PyModule>) -> PyResult<()> {
     m.add_class::<HatchStyle>()?;
+    m.add_class::<ContourStyle>()?;
     m.add_class::<PlanarSurface>()?;
     m.add_class::<SphereSurface>()?;
     m.add_class::<RevolutionSurface>()?;

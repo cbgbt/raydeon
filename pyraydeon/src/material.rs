@@ -1,6 +1,6 @@
 use pyo3::prelude::*;
 
-use crate::hatch::HatchStyle;
+use crate::hatch::{ContourStyle, HatchStyle};
 
 pywrap!(PenId, raydeon::PenId);
 
@@ -53,16 +53,17 @@ pywrap!(Material, raydeon::material::Material);
 impl Material {
     /// How a surface takes light, and how it draws itself.
     ///
-    /// An omitted `pen` plots with pen zero, and an omitted `hatch` draws
-    /// outlines only.
+    /// An omitted `pen` plots with pen zero, an omitted `hatch` draws
+    /// outlines only, and an omitted `contours` draws no iso-contours.
     #[new]
-    #[pyo3(signature = (diffuse=0.0, specular=0.0, shininess=0.0, pen=None, hatch=None))]
+    #[pyo3(signature = (diffuse=0.0, specular=0.0, shininess=0.0, pen=None, hatch=None, contours=None))]
     fn new(
         diffuse: f64,
         specular: f64,
         shininess: f64,
         pen: Option<Pen>,
         hatch: Option<HatchStyle>,
+        contours: Option<ContourStyle>,
     ) -> PyResult<Self> {
         Ok(raydeon::material::Material::new()
             .diffuse(diffuse)
@@ -70,6 +71,7 @@ impl Material {
             .shininess(shininess)
             .pen(pen.map(Pen::parse).unwrap_or_default())
             .maybe_hatch(hatch.map(|style| style.0))
+            .maybe_contours(contours.map(|style| style.0))
             .build()
             .into())
     }
@@ -97,6 +99,11 @@ impl Material {
     #[getter]
     fn hatch(&self) -> Option<HatchStyle> {
         self.hatch.clone().map(Into::into)
+    }
+
+    #[getter]
+    fn contours(&self) -> Option<ContourStyle> {
+        self.contours.clone().map(Into::into)
     }
 
     fn __repr__(slf: &Bound<'_, Self>) -> PyResult<String> {
