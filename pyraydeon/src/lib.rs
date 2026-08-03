@@ -1,3 +1,8 @@
+// `#[pymethods]` expands every `PyResult`-returning method with an
+// `.into()` on the error, which is a no-op when the method already yields a
+// `PyErr`. The lint fires on generated code no hand-written line controls.
+#![allow(clippy::useless_conversion)]
+
 use pyo3::prelude::*;
 
 macro_rules! pywrap {

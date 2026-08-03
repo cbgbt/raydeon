@@ -57,8 +57,6 @@ pub type CPoint3 = Point3<CameraSpace>;
 
 pub type CWTransform = Transform3<CameraSpace, WorldSpace>;
 pub type WCTransform = Transform3<WorldSpace, CameraSpace>;
-pub type WWTransform = Transform3<WorldSpace, WorldSpace>;
-pub type CCTransform = Transform3<CameraSpace, CameraSpace>;
 
 pub trait Shape: Send + Sync + std::fmt::Debug {
     fn collision_geometry(&self) -> Option<Vec<Arc<dyn CollisionGeometry>>>;

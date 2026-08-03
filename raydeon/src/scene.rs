@@ -1,7 +1,6 @@
 use bon::Builder;
 use bvh::{BVHTree, Collidable};
-use collision::Continuous;
-use euclid::{Point2D, Vector2D, Vector3D};
+use euclid::Vector2D;
 use hatch::jitter::{jitter01, screen_seed};
 use nutype::nutype;
 use path::{LineSegment2D, SlicedSegment3D};
@@ -45,18 +44,6 @@ impl SceneGeometry {
         let bvh = Self::create_bvh(&geometry);
         self.geometry = geometry;
         self.bvh = bvh;
-        self
-    }
-
-    pub fn push_geometry(mut self, geometry: DrawableShape) -> Self {
-        self.geometry.push(geometry);
-        self.bvh = Self::create_bvh(&self.geometry);
-        self
-    }
-
-    pub fn concat_geometry(mut self, geometry: &[DrawableShape]) -> Self {
-        self.geometry.extend_from_slice(geometry);
-        self.bvh = Self::create_bvh(&self.geometry);
         self
     }
 
@@ -142,16 +129,6 @@ impl SceneLighting {
         self
     }
 
-    pub fn push_light(mut self, light: Arc<dyn Light>) -> Self {
-        self.lights.push(light);
-        self
-    }
-
-    pub fn concat_lights(mut self, lights: &[Arc<dyn Light>]) -> Self {
-        self.lights.extend_from_slice(lights);
-        self
-    }
-
     pub fn with_ambient_lighting(mut self, ambient: f64) -> Self {
         self.ambient = ambient;
         self
@@ -185,12 +162,12 @@ impl From<Vec<Arc<dyn Light>>> for SceneLighting {
 }
 
 impl Scene {
-    pub fn attach_camera(&self, camera: Camera) -> SceneCamera {
+    pub fn attach_camera(&self, camera: Camera) -> SceneCamera<'_> {
         SceneCamera::new(camera, self)
     }
 
     /// Find's the closest intersection point to geometry in the scene, if any
-    pub(crate) fn intersects(&self, ray: Ray) -> Option<HitShape> {
+    pub(crate) fn intersects(&self, ray: Ray) -> Option<HitShape<'_>> {
         self.geometry.bvh.intersects(ray)
     }
 
@@ -269,22 +246,6 @@ impl<'s> SceneCamera<'s> {
 
     pub(crate) fn seed(&self) -> u64 {
         self.seed
-    }
-
-    pub fn adjust_yaw(&mut self, yaw: euclid::Angle<f64>) {
-        self.camera.adjust_yaw(yaw);
-    }
-
-    pub fn adjust_pitch(&mut self, pitch: euclid::Angle<f64>) {
-        self.camera.adjust_pitch(pitch);
-    }
-
-    pub fn adjust_roll(&mut self, roll: euclid::Angle<f64>) {
-        self.camera.adjust_roll(roll);
-    }
-
-    pub fn translate(&mut self, trans: impl Into<Vector3D<f64, ()>>) {
-        self.camera.translate(trans);
     }
 
     fn clip_filter(&self, path: &LineSegment3D<WorldSpace>) -> bool {
@@ -532,21 +493,12 @@ impl<'s> SceneCamera<'s> {
         let hatch_dir: Vector2D<f64, CameraSpace> =
             Vec2::new(hatch_dir.cos(), hatch_dir.sin()).normalize();
 
-        let coll_aabb = collision::Aabb2::new(
-            (0.0, 0.0).into(),
-            (
+        let page = euclid::Box2D::new(
+            Point2::new(0.0, 0.0),
+            Point2::new(
                 self.camera.perspective.width() as f64,
                 self.camera.perspective.height() as f64,
-            )
-                .into(),
-        );
-        let euclid_aabb = euclid::Box2D::new(
-            (0.0, 0.0).into(),
-            (
-                self.camera.perspective.width() as f64,
-                self.camera.perspective.height() as f64,
-            )
-                .into(),
+            ),
         );
 
         let diagonal: Vector2D<f64, CameraSpace> = Vec2::new(
@@ -556,22 +508,10 @@ impl<'s> SceneCamera<'s> {
         .normalize();
         let mut dist = initial_offset;
         let mut curr_point = diagonal * dist;
-        while euclid_aabb.contains(curr_point.to_point()) {
-            let start = curr_point;
-
-            let cgstart = cgmath::Point2::from(start.to_array());
-            let cgd1 = cgmath::Vector2::from(hatch_dir.to_array());
-            let cgd2 = cgd1 * -1.0;
-            let r1 = collision::Ray::new(cgstart, cgd1);
-            let r2 = collision::Ray::new(cgstart, cgd2);
-
-            let p1 = coll_aabb.intersection(&r1).unwrap();
-            let p2 = coll_aabb.intersection(&r2).unwrap();
-
-            segments.push(LineSegment2D::new_segment(
-                Point2D::new(p1.x, p1.y),
-                Point2D::new(p2.x, p2.y),
-            ));
+        while page.contains(curr_point.to_point()) {
+            if let Some((p1, p2)) = clip_line_to_box(curr_point.to_point(), hatch_dir, &page) {
+                segments.push(LineSegment2D::new_segment(p1, p2));
+            }
 
             dist += self.camera.render_options.hatch_pixel_spacing;
             curr_point = diagonal * dist;
@@ -579,6 +519,47 @@ impl<'s> SceneCamera<'s> {
 
         segments
     }
+}
+
+/// Clips the infinite line through `origin` along `dir` to `page`, returning
+/// the two boundary points, or `None` when the line misses the box entirely.
+///
+/// Liang-Barsky: the line is `origin + t * dir`, and each of the box's four
+/// edges bounds `t` from one side. The surviving `[t_min, t_max]` window is
+/// the part of the line inside the box.
+fn clip_line_to_box(
+    origin: Point2<CameraSpace>,
+    dir: Vector2D<f64, CameraSpace>,
+    page: &euclid::Box2D<f64, CameraSpace>,
+) -> Option<(Point2<CameraSpace>, Point2<CameraSpace>)> {
+    let mut t_min = f64::NEG_INFINITY;
+    let mut t_max = f64::INFINITY;
+
+    let edges = [
+        (-dir.x, origin.x - page.min.x),
+        (dir.x, page.max.x - origin.x),
+        (-dir.y, origin.y - page.min.y),
+        (dir.y, page.max.y - origin.y),
+    ];
+
+    for (p, q) in edges {
+        if p == 0.0 {
+            // The line runs parallel to this edge: it either lies wholly
+            // inside the slab or wholly outside it.
+            if q < 0.0 {
+                return None;
+            }
+        } else {
+            let t = q / p;
+            if p < 0.0 {
+                t_min = t_min.max(t);
+            } else {
+                t_max = t_max.min(t);
+            }
+        }
+    }
+
+    (t_min <= t_max).then(|| (origin + dir * t_max, origin + dir * t_min))
 }
 
 /// Screen-space hatching shades the whole image rather than any one shape, so
@@ -589,5 +570,45 @@ fn screen_hatch_stroke(segment: LineSegment2D<CameraSpace>) -> Stroke {
         p2: segment.p2,
         pen: PenId::default(),
         kind: StrokeKind::Hatch,
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn unit_page() -> euclid::Box2D<f64, CameraSpace> {
+        euclid::Box2D::new(Point2::new(0.0, 0.0), Point2::new(10.0, 10.0))
+    }
+
+    #[test]
+    fn clips_a_horizontal_line_to_the_page_edges() {
+        let (forward, backward) =
+            clip_line_to_box(Point2::new(3.0, 4.0), Vector2D::new(1.0, 0.0), &unit_page())
+                .expect("a line through the page meets it");
+
+        assert_eq!(forward, Point2::new(10.0, 4.0));
+        assert_eq!(backward, Point2::new(0.0, 4.0));
+    }
+
+    #[test]
+    fn clips_a_diagonal_line_to_the_page_corners() {
+        let diag = Vec2::new(1.0, 1.0).normalize();
+        let (forward, backward) =
+            clip_line_to_box(Point2::new(5.0, 5.0), diag, &unit_page()).expect("the diagonal fits");
+
+        assert_eq!(forward, Point2::new(10.0, 10.0));
+        assert_eq!(backward, Point2::new(0.0, 0.0));
+    }
+
+    #[test]
+    fn reports_no_crossing_for_a_line_beside_the_page() {
+        let outside = clip_line_to_box(
+            Point2::new(-1.0, 4.0),
+            Vector2D::new(0.0, 1.0),
+            &unit_page(),
+        );
+
+        assert!(outside.is_none());
     }
 }

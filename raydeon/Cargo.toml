@@ -6,18 +6,15 @@ edition = "2021"
 
 [dependencies]
 bon.workspace = true
-cgmath.workspace = true
-collision.workspace = true
-dot_vox.workspace = true
 euclid.workspace = true
 float-cmp.workspace = true
-log.workspace = true
 nutype.workspace = true
 rayon.workspace = true
 snafu.workspace = true
 tracing = { workspace = true, features = ["log"] }
 
 [dev-dependencies]
+dot_vox.workspace = true
 env_logger.workspace = true
 proptest.workspace = true
 svg.workspace = true

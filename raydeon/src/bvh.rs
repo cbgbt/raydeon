@@ -65,7 +65,7 @@ impl BVHTree {
 }
 
 impl BVHTree {
-    pub(crate) fn intersects(&self, ray: Ray) -> Option<HitShape> {
+    pub(crate) fn intersects(&self, ray: Ray) -> Option<HitShape<'_>> {
         vec![
             self.intersects_bounded_volume(ray),
             self.intersects_unbounded_volume(ray),
@@ -75,7 +75,7 @@ impl BVHTree {
         .min_by(|hit1, hit2| hit1.hit_data.dist_to.total_cmp(&hit2.hit_data.dist_to))
     }
 
-    fn intersects_bounded_volume(&self, ray: Ray) -> Option<HitShape> {
+    fn intersects_bounded_volume(&self, ray: Ray) -> Option<HitShape<'_>> {
         let (tmin, tmax) = bounding_box_intersects(self.aabb, ray);
         if tmax < tmin || tmax <= 0.0 {
             None
@@ -86,7 +86,7 @@ impl BVHTree {
         }
     }
 
-    fn intersects_unbounded_volume(&self, ray: Ray) -> Option<HitShape> {
+    fn intersects_unbounded_volume(&self, ray: Ray) -> Option<HitShape<'_>> {
         self.unbounded
             .iter()
             .filter_map(|collidable| {
@@ -114,7 +114,7 @@ struct ParentNode {
 }
 
 impl ParentNode {
-    fn intersects(&self, ray: Ray, tmin: f64, tmax: f64) -> Option<HitShape> {
+    fn intersects(&self, ray: Ray, tmin: f64, tmax: f64) -> Option<HitShape<'_>> {
         let rp: f64;
         let rd: f64;
         match self.axis {
@@ -217,7 +217,7 @@ impl LeafNode {
 }
 
 impl LeafNode {
-    fn intersects(&self, ray: Ray) -> Option<HitShape> {
+    fn intersects(&self, ray: Ray) -> Option<HitShape<'_>> {
         self.shapes
             .iter()
             .filter_map(|shape| {
@@ -306,7 +306,7 @@ impl Node {
 }
 
 impl Node {
-    fn intersects(&self, ray: Ray, tmin: f64, tmax: f64) -> Option<HitShape> {
+    fn intersects(&self, ray: Ray, tmin: f64, tmax: f64) -> Option<HitShape<'_>> {
         match self {
             Self::Parent(parent_node) => parent_node.intersects(ray, tmin, tmax),
             Self::Leaf(leaf_node) => leaf_node.intersects(ray),

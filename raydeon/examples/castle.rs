@@ -1,4 +1,3 @@
-use dot_vox;
 use euclid::Angle;
 use raydeon::lights::PointLight;
 use raydeon::shapes::AxisAlignedCuboid;
