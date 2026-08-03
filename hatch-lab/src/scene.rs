@@ -150,31 +150,33 @@ pub fn build() -> TestScene {
         .geometry(assembler.drawables)
         .lighting(
             SceneLighting::new()
-                .with_lights(vec![Arc::new(PointLight::new(
-                    2.2,
-                    0.6,
-                    light_position,
-                    1.0,
-                    0.02,
-                    0.001,
-                ))])
+                .with_lights(vec![Arc::new(
+                    PointLight::new()
+                        .position(light_position)
+                        .intensity(2.2)
+                        .specular_intensity(0.6)
+                        .constant_attenuation(1.0)
+                        .linear_attenuation(0.02)
+                        .quadratic_attenuation(0.001)
+                        .build(),
+                )])
                 .with_ambient_lighting(0.15),
         )
-        .construct();
+        .build();
 
-    let camera = Camera::configure()
-        .observation(Camera::look_at(
-            WPoint3::new(13.5, -10.5, 5.8),
-            WVec3::new(0.5, 0.5, 2.2),
-            WVec3::new(0.0, 0.0, 1.0),
-        ))
-        .perspective(Camera::perspective(
-            42.0,
-            RENDER_WIDTH,
-            RENDER_HEIGHT,
-            0.1,
-            60.0,
-        ))
+    let camera = Camera::new()
+        .observation(
+            Camera::look_at(
+                WPoint3::new(13.5, -10.5, 5.8),
+                WVec3::new(0.5, 0.5, 2.2),
+                WVec3::new(0.0, 0.0, 1.0),
+            )
+            .expect("the lab camera looks at a point in front of it"),
+        )
+        .perspective(
+            Camera::perspective(42.0, RENDER_WIDTH, RENDER_HEIGHT, 0.1, 60.0)
+                .expect("the lab frustum parameters are well formed"),
+        )
         .build();
 
     TestScene {

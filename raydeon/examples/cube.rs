@@ -14,7 +14,7 @@ fn main() {
                 .max((1.0, 1.0, 1.0))
                 .build(),
         )])
-        .construct();
+        .build();
 
     let eye = WPoint3::new(4.0, 3.0, 2.0);
     let focus = WVec3::new(0.0, 0.0, 0.0);
@@ -26,10 +26,16 @@ fn main() {
     let znear = 0.1;
     let zfar = 10.0;
 
-    let camera = Camera::configure()
-        .observation(Camera::look_at(eye, focus, up))
-        .perspective(Camera::perspective(fovy, width, height, znear, zfar))
-        .render_options(CameraOptions::configure().pen_px_size(4.0).build())
+    let camera = Camera::new()
+        .observation(
+            Camera::look_at(eye, focus, up)
+                .expect("the example's camera looks at a point in front of it"),
+        )
+        .perspective(
+            Camera::perspective(fovy, width, height, znear, zfar)
+                .expect("the example's frustum parameters are well formed"),
+        )
+        .render_options(CameraOptions::new().pen_px_size(4.0).build())
         .build();
 
     let rendering = scene.attach_camera(camera).render();

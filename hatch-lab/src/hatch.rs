@@ -19,10 +19,11 @@ pub fn tone_at(
     face_drawable: &raydeon::DrawableShape,
     point: WPoint3,
     normal: WVec3,
+    eye: WPoint3,
 ) -> f64 {
     let hit = HitData::new(point + normal * SURFACE_LIFT, 1.0, normal);
     let hit_shape = HitShape::new(hit, face_drawable);
-    (scene.illumination_for_hit(hit_shape) / TONE_WHITE).clamp(0.0, 1.0)
+    (scene.illumination_for_hit(hit_shape, eye) / TONE_WHITE).clamp(0.0, 1.0)
 }
 
 /// Generates parallel lines across `face` at `angle` radians (measured in
@@ -73,6 +74,7 @@ pub fn filter_by_tone(
     scene: &Scene,
     face_drawable: &raydeon::DrawableShape,
     normal: WVec3,
+    eye: WPoint3,
     segment: &LineSegment3D<WorldSpace>,
     keep: impl Fn(f64, u64) -> bool,
 ) -> Vec<LineSegment3D<WorldSpace>> {
@@ -86,7 +88,7 @@ pub fn filter_by_tone(
         .enumerate()
         .filter_map(|(ndx, sub)| {
             let midpoint = sub.midpoint();
-            let tone = tone_at(scene, face_drawable, midpoint, normal);
+            let tone = tone_at(scene, face_drawable, midpoint, normal, eye);
             let jitter_seed = point_seed(midpoint);
             (!keep(tone, jitter_seed)).then_some(ndx)
         })
@@ -104,13 +106,14 @@ pub fn hatch_faces(
     spacing: f64,
     keep: impl Fn(f64, u64) -> bool + Copy,
 ) -> Vec<LineSegment3D<WorldSpace>> {
+    let eye = test.camera.observation.eye();
     test.faces
         .iter()
         .flat_map(|face| {
             face_hatch_lines(face, angle_for_face(face), spacing)
                 .iter()
                 .flat_map(|line| {
-                    filter_by_tone(&test.scene, &face.drawable, face.normal, line, keep)
+                    filter_by_tone(&test.scene, &face.drawable, face.normal, eye, line, keep)
                 })
                 .collect::<Vec<_>>()
         })
@@ -121,6 +124,7 @@ pub fn hatch_faces(
 /// perpendicular to `axis` and spaced `spacing` apart along the surface.
 pub fn ball_rings(
     scene: &Scene,
+    eye: WPoint3,
     ball: &Ball,
     axis: WVec3,
     spacing: f64,
@@ -156,7 +160,7 @@ pub fn ball_rings(
             let p2 = at(ndx + 1);
             let midpoint = p1 + (p2 - p1) / 2.0;
             let normal = (midpoint - ball.center).normalize();
-            let tone = tone_at(scene, &ball.drawable, midpoint, normal);
+            let tone = tone_at(scene, &ball.drawable, midpoint, normal, eye);
             if keep(tone, point_seed(midpoint)) {
                 segments.push(LineSegment3D::new_segment(p1, p2));
             }

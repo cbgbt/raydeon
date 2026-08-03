@@ -13,7 +13,7 @@ use tracing::info;
 use crate::*;
 
 #[derive(Debug, Builder)]
-#[builder(start_fn(name = new), finish_fn(name = construct))]
+#[builder(start_fn(name = new))]
 pub struct Scene {
     #[builder(into)]
     geometry: SceneGeometry,
@@ -170,11 +170,14 @@ impl Scene {
     /// Callers which already know the surface geometry can construct the
     /// [`HitShape`] directly rather than casting a ray, which is useful for
     /// sampling illumination along surface-space hatch lines.
-    pub fn illumination_for_hit<'s>(&'s self, hit: HitShape<'s>) -> f64 {
+    ///
+    /// `eye` is the viewpoint the illumination is seen from; specular
+    /// highlights depend on it.
+    pub fn illumination_for_hit<'s>(&'s self, hit: HitShape<'s>, eye: WPoint3) -> f64 {
         self.lighting
             .lights
             .iter()
-            .map(|light| light.compute_illumination(self, hit))
+            .map(|light| light.compute_illumination(self, hit, eye))
             .sum::<f64>()
             + self.lighting.ambient
     }
@@ -307,7 +310,7 @@ impl<'s> SceneCamera<'s> {
                     .enumerate()
                     .filter_map(|(ndx, path)| {
                         let from_cam = path.midpoint() - self.camera.observation.eye();
-                        let close_enough = from_cam.length() < self.camera.perspective.zfar;
+                        let close_enough = from_cam.length() < self.camera.perspective.zfar();
                         let visible = close_enough && self.clip_filter(&path);
                         (!visible).then_some(ndx)
                     })
@@ -406,8 +409,10 @@ impl<'s> SceneCamera<'s> {
 
     fn lighting_for_ray(&self, ray: Ray) -> Option<f64> {
         let hit_shape = self.scene.intersects(ray)?;
-        (hit_shape.hit_data.dist_to <= self.camera.perspective.zfar)
-            .then(|| self.scene.illumination_for_hit(hit_shape))
+        (hit_shape.hit_data.dist_to <= self.camera.perspective.zfar()).then(|| {
+            self.scene
+                .illumination_for_hit(hit_shape, self.camera.observation.eye())
+        })
     }
 
     // https://smashingpencilsart.com/how-do-you-hatch-with-a-pen/
@@ -418,9 +423,9 @@ impl<'s> SceneCamera<'s> {
 
         // vertical lines
         let mut x = initial_offset;
-        while x < self.camera.perspective.width as f64 {
+        while x < self.camera.perspective.width() as f64 {
             let start = Point2::new(x, 0.0);
-            let end = Point2::new(x, self.camera.perspective.height as f64);
+            let end = Point2::new(x, self.camera.perspective.height() as f64);
             segments.push(LineSegment2D::new_segment(start, end));
             x += self.camera.render_options.hatch_pixel_spacing;
         }
@@ -440,23 +445,23 @@ impl<'s> SceneCamera<'s> {
         let coll_aabb = collision::Aabb2::new(
             (0.0, 0.0).into(),
             (
-                self.camera.perspective.width as f64,
-                self.camera.perspective.height as f64,
+                self.camera.perspective.width() as f64,
+                self.camera.perspective.height() as f64,
             )
                 .into(),
         );
         let euclid_aabb = euclid::Box2D::new(
             (0.0, 0.0).into(),
             (
-                self.camera.perspective.width as f64,
-                self.camera.perspective.height as f64,
+                self.camera.perspective.width() as f64,
+                self.camera.perspective.height() as f64,
             )
                 .into(),
         );
 
         let diagonal: Vector2D<f64, CameraSpace> = Vec2::new(
-            self.camera.perspective.width as f64,
-            self.camera.perspective.height as f64,
+            self.camera.perspective.width() as f64,
+            self.camera.perspective.height() as f64,
         )
         .normalize();
         let mut dist = initial_offset;

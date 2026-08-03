@@ -1,4 +1,5 @@
 use numpy::{Ix1, PyArray};
+use pyo3::exceptions::PyValueError;
 use pyo3::prelude::*;
 
 use crate::linear::{Point3, Vec3};
@@ -39,14 +40,23 @@ impl Camera {
         let up = Vec3::try_from(up)?;
         let mut ncam = self.0.clone();
         ncam.observation =
-            raydeon::Camera::look_at(eye.cast_unit(), center.cast_unit(), up.cast_unit());
+            raydeon::Camera::look_at(eye.cast_unit(), center.cast_unit(), up.cast_unit())
+                .map_err(|err| PyValueError::new_err(err.to_string()))?;
         Ok(ncam.into())
     }
 
-    fn perspective(&self, fovy: f64, width: usize, height: usize, znear: f64, zfar: f64) -> Camera {
+    fn perspective(
+        &self,
+        fovy: f64,
+        width: usize,
+        height: usize,
+        znear: f64,
+        zfar: f64,
+    ) -> PyResult<Camera> {
         let mut ncam = self.0.clone();
-        ncam.perspective = raydeon::Camera::perspective(fovy, width, height, znear, zfar);
-        ncam.into()
+        ncam.perspective = raydeon::Camera::perspective(fovy, width, height, znear, zfar)
+            .map_err(|err| PyValueError::new_err(err.to_string()))?;
+        Ok(ncam.into())
     }
 
     fn render_options(&self, options: CameraOptions) -> Camera {
@@ -98,32 +108,32 @@ impl Camera {
 
     #[getter]
     fn fovy(&self) -> f64 {
-        self.0.perspective.fovy
+        self.0.perspective.fovy()
     }
 
     #[getter]
     fn width(&self) -> usize {
-        self.0.perspective.width
+        self.0.perspective.width()
     }
 
     #[getter]
     fn height(&self) -> usize {
-        self.0.perspective.height
+        self.0.perspective.height()
     }
 
     #[getter]
     fn aspect(&self) -> f64 {
-        self.0.perspective.aspect
+        self.0.perspective.aspect()
     }
 
     #[getter]
     fn znear(&self) -> f64 {
-        self.0.perspective.znear
+        self.0.perspective.znear()
     }
 
     #[getter]
     fn zfar(&self) -> f64 {
-        self.0.perspective.zfar
+        self.0.perspective.zfar()
     }
 
     fn __repr__(slf: &Bound<'_, Self>) -> PyResult<String> {
@@ -169,7 +179,7 @@ impl CameraOptions {
         vert_hatch_brightness_scaling: Option<f64>,
         diag_hatch_brightness_scaling: Option<f64>,
     ) -> Self {
-        raydeon::CameraOptions::configure()
+        raydeon::CameraOptions::new()
             .maybe_pen_px_size(pen_px_size)
             .maybe_hatch_pixel_spacing(hatch_pixel_spacing)
             .maybe_hatch_pixel_chop_factor(hatch_pixel_chop_factor)

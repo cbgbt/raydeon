@@ -15,7 +15,7 @@ pub mod stroke;
 use std::fmt::Debug;
 use std::sync::Arc;
 
-pub use camera::{Camera, CameraOptions};
+pub use camera::{Camera, CameraOptions, LookAtError, Observation, Perspective, PerspectiveError};
 pub use lights::Light;
 pub use material::Material;
 pub use path::LineSegment3D;

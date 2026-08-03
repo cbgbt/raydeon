@@ -43,10 +43,16 @@ fn main() {
     let znear = 0.1;
     let zfar = 200.0;
 
-    let mut camera = Camera::configure()
-        .observation(Camera::look_at(eye, focus, up))
-        .perspective(Camera::perspective(fovy, width, height, znear, zfar))
-        .render_options(CameraOptions::configure().pen_px_size(4.0).build())
+    let mut camera = Camera::new()
+        .observation(
+            Camera::look_at(eye, focus, up)
+                .expect("the example's camera looks at a point in front of it"),
+        )
+        .perspective(
+            Camera::perspective(fovy, width, height, znear, zfar)
+                .expect("the example's frustum parameters are well formed"),
+        )
+        .render_options(CameraOptions::new().pen_px_size(4.0).build())
         .build();
 
     camera.translate((-15.0, 10.75, 0.0));
@@ -58,16 +64,18 @@ fn main() {
         .lighting(
             SceneLighting::new()
                 .with_ambient_lighting(0.37)
-                .with_lights(vec![Arc::new(PointLight::new(
-                    55.0,
-                    10.0,
-                    (-10.81, -20.0, 30.0),
-                    0.0,
-                    0.13,
-                    0.19,
-                ))]),
+                .with_lights(vec![Arc::new(
+                    PointLight::new()
+                        .position((-10.81, -20.0, 30.0))
+                        .intensity(55.0)
+                        .specular_intensity(10.0)
+                        .constant_attenuation(0.0)
+                        .linear_attenuation(0.13)
+                        .quadratic_attenuation(0.19)
+                        .build(),
+                )]),
         )
-        .construct();
+        .build();
 
     let rendering = scene
         .attach_camera(camera)

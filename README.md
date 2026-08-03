@@ -70,17 +70,19 @@ fn main() {
         ])
         .lighting(
             SceneLighting::new()
-                .with_lights(vec![Arc::new(PointLight::new(
-                    20.0,
-                    100.0,
-                    (5.5, 12.0, 7.3),
-                    0.0,
-                    0.09,
-                    0.23,
-                ))])
+                .with_lights(vec![Arc::new(
+                    PointLight::new()
+                        .position((5.5, 12.0, 7.3))
+                        .intensity(20.0)
+                        .specular_intensity(100.0)
+                        .constant_attenuation(0.0)
+                        .linear_attenuation(0.09)
+                        .quadratic_attenuation(0.23)
+                        .build(),
+                )])
                 .with_ambient_lighting(0.13),
         )
-        .construct();
+        .build();
 
     let eye = WPoint3::new(8.0, 6.0, 4.0);
     let focus = WVec3::new(0.0, 0.0, 0.0);
@@ -92,9 +94,12 @@ fn main() {
     let znear = 0.1;
     let zfar = 20.0;
 
-    let camera = Camera::configure()
-        .observation(Camera::look_at(eye, focus, up))
-        .perspective(Camera::perspective(fovy, width, height, znear, zfar))
+    let camera = Camera::new()
+        .observation(Camera::look_at(eye, focus, up).expect("the camera looks at a point in front of it"))
+        .perspective(
+            Camera::perspective(fovy, width, height, znear, zfar)
+                .expect("the frustum parameters are well formed"),
+        )
         .build();
 
     let render_result = scene.attach_camera(camera).render_with_lighting();

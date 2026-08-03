@@ -1,8 +1,11 @@
-use bon::Builder;
-use euclid::{Point3D, Transform3D, Vector3D};
-use path::SlicedSegment3D;
+mod view;
 
-use self::view_matrix_settings::*;
+use bon::Builder;
+use euclid::{Transform3D, Vector3D};
+use path::SlicedSegment3D;
+use snafu::prelude::*;
+
+pub use self::view::*;
 use crate::*;
 
 pub const DEFAULT_PEN_PX_SIZE: f64 = 4.0;
@@ -12,8 +15,36 @@ pub const DEFAULT_HATCH_SLICE_FORGIVENESS: usize = 1;
 pub const DEFAULT_VERT_HATCH_BRIGHTNESS_SCALING: f64 = 0.8;
 pub const DEFAULT_DIAG_HATCH_BRIGHTNESS_SCALING: f64 = 0.46;
 
+/// Why a camera placement describes no view.
+#[derive(Debug, Snafu)]
+pub enum LookAtError {
+    #[snafu(display("the eye and the point it looks at coincide, so there is no view direction"))]
+    ZeroView,
+    #[snafu(display(
+        "the up direction is parallel to the view direction, so there is no camera basis"
+    ))]
+    UpParallelToView,
+}
+
+/// Why a set of frustum parameters describes no projection.
+#[derive(Debug, Snafu)]
+pub enum PerspectiveError {
+    #[snafu(display(
+        "the vertical field of view must be between 0 and 180 degrees, but was {fovy}"
+    ))]
+    FovyOutOfRange { fovy: f64 },
+    #[snafu(display(
+        "the render must be at least one pixel in each dimension, but was {width}x{height}"
+    ))]
+    EmptyViewport { width: usize, height: usize },
+    #[snafu(display(
+        "the clip planes must satisfy 0 < znear < zfar, but were znear {znear} and zfar {zfar}"
+    ))]
+    ClipPlanesOutOfOrder { znear: f64, zfar: f64 },
+}
+
 #[derive(Debug, Clone, Builder, Default)]
-#[builder(start_fn(name = configure))]
+#[builder(start_fn(name = new))]
 pub struct Camera {
     pub observation: Observation,
     pub perspective: Perspective,
@@ -22,7 +53,7 @@ pub struct Camera {
 }
 
 #[derive(Debug, Clone, Builder)]
-#[builder(start_fn(name = configure))]
+#[builder(start_fn(name = new))]
 pub struct CameraOptions {
     #[builder(default = DEFAULT_PEN_PX_SIZE)]
     pub pen_px_size: f64,
@@ -40,7 +71,7 @@ pub struct CameraOptions {
 
 impl Default for CameraOptions {
     fn default() -> Self {
-        Self::configure().build()
+        Self::new().build()
     }
 }
 
@@ -64,10 +95,9 @@ impl Camera {
     #[must_use]
     pub fn canvas_transformation(&self) -> Transform3D<f64, WorldSpace, CanvasSpace> {
         let p = &self.perspective;
-        let ymax = p.znear * (p.fovy * std::f64::consts::PI / 360.0).tan();
-        let xmax = ymax * p.aspect;
+        let (xmax, ymax) = p.half_extents();
 
-        let frustum = frustum(-xmax, xmax, -ymax, ymax, p.znear, p.zfar);
+        let frustum = frustum(-xmax, xmax, -ymax, ymax, p.znear(), p.zfar());
         self.observation.world_to_camera_transform().then(&frustum)
     }
 
@@ -76,8 +106,8 @@ impl Camera {
         self.canvas_transformation()
             .then_translate(Vec3::new(1.0, 1.0, 0.0))
             .then_scale(
-                self.perspective.width as f64 / 2.0,
-                self.perspective.height as f64 / 2.0,
+                self.perspective.width() as f64 / 2.0,
+                self.perspective.height() as f64 / 2.0,
                 1.0,
             )
             .with_destination()
@@ -119,30 +149,34 @@ impl Camera {
         }
     }
 
+    /// The ray leaving the eye through the given camera-space pixel.
+    ///
+    /// The direction is read straight off the camera basis and the frustum
+    /// extents, so no matrix has to be inverted to answer the question.
     pub fn ray_for_px_coords(&self, x: f64, y: f64) -> Ray {
-        let pix_ndc = Point3D::new(x, y, 0.0);
+        let p = &self.perspective;
+        let (xmax, ymax) = p.half_extents();
 
-        let world_coord = self
-            .camera_transformation()
-            .inverse()
-            .unwrap()
-            .transform_point3d(pix_ndc)
-            .unwrap();
+        // Pixel coordinates run from 0 to the render dimensions; the frustum
+        // extents describe the same window measured from its centre.
+        let ndc_x = 2.0 * x / p.width() as f64 - 1.0;
+        let ndc_y = 2.0 * y / p.height() as f64 - 1.0;
 
-        Ray {
-            point: self.observation.eye(),
-            dir: (world_coord.to_vector() - self.observation.eye().to_vector()).normalize(),
-        }
+        let observation = &self.observation;
+        let dir = observation.right() * (ndc_x * xmax)
+            + observation.up() * (ndc_y * ymax)
+            + observation.look() * p.znear();
+
+        Ray::new(observation.eye(), dir.normalize())
     }
 
     #[must_use]
     fn min_step_size(&self) -> f64 {
         let p = &self.perspective;
-        let ymax = p.znear * (p.fovy * std::f64::consts::PI / 360.0).tan();
-        let xmax = ymax * p.aspect;
+        let (xmax, ymax) = p.half_extents();
 
         // TODO: We can apply scaling here based on pen size
-        let effective_dims: Vec2<()> = Vec2::new(p.width as f64, p.height as f64);
+        let effective_dims: Vec2<()> = Vec2::new(p.width() as f64, p.height() as f64);
 
         let znear_dims = Vec2::new(xmax, ymax) * 2.0;
         let est_min_pix = znear_dims.component_div(effective_dims);
@@ -156,7 +190,7 @@ impl Camera {
         eye: impl Into<WPoint3>,
         center: impl Into<WVec3>,
         up: impl Into<WVec3>,
-    ) -> Observation {
+    ) -> Result<Observation, LookAtError> {
         Observation::look_at(eye, center, up)
     }
 
@@ -166,144 +200,8 @@ impl Camera {
         height: usize,
         znear: f64,
         zfar: f64,
-    ) -> Perspective {
-        let aspect = width as f64 / height as f64;
-        Perspective {
-            fovy,
-            width,
-            height,
-            aspect,
-            znear,
-            zfar,
-        }
-    }
-}
-
-mod view_matrix_settings {
-    use super::*;
-
-    #[derive(Debug, Copy, Clone)]
-    pub struct Observation {
-        view_mat: CWTransform,
-    }
-
-    impl Default for Observation {
-        fn default() -> Self {
-            Self::look_at((0.0, 0.0, 1.0), (0.0, 0.0, 0.0), (0.0, 1.0, 0.0))
-        }
-    }
-
-    impl Observation {
-        pub fn look_at(
-            eye: impl Into<WPoint3>,
-            center: impl Into<WVec3>,
-            up: impl Into<WVec3>,
-        ) -> Self {
-            let view_mat = Self::create_view_matrix(eye, center, up);
-            Self { view_mat }
-        }
-
-        pub fn eye(&self) -> WPoint3 {
-            (self.view_mat.m41, self.view_mat.m42, self.view_mat.m43).into()
-        }
-
-        pub fn right(&self) -> WVec3 {
-            (self.view_mat.m11, self.view_mat.m12, self.view_mat.m13).into()
-        }
-
-        pub fn up(&self) -> WVec3 {
-            (self.view_mat.m21, self.view_mat.m22, self.view_mat.m23).into()
-        }
-
-        pub fn look(&self) -> WVec3 {
-            (-self.view_mat.m31, -self.view_mat.m32, -self.view_mat.m33).into()
-        }
-
-        fn rotate_around_axis(&mut self, axis: impl Into<WVec3>, angle: euclid::Angle<f64>) {
-            let axis = axis.into();
-            self.view_mat = self
-                .view_mat
-                .pre_rotate(axis.x, axis.y, axis.z, angle)
-                .with_destination();
-        }
-
-        pub fn adjust_yaw(&mut self, yaw: euclid::Angle<f64>) {
-            self.rotate_around_axis((0.0, 1.0, 0.0), yaw);
-        }
-
-        pub fn adjust_pitch(&mut self, pitch: euclid::Angle<f64>) {
-            self.rotate_around_axis((1.0, 0.0, 0.0), pitch);
-        }
-
-        pub fn adjust_roll(&mut self, roll: euclid::Angle<f64>) {
-            self.rotate_around_axis((0.0, 0.0, 1.0), roll);
-        }
-
-        pub fn translate<T>(&mut self, trans: impl Into<Vector3D<f64, T>>) {
-            // input is a camera translation, but we're describing a
-            // world translation, so we negate
-            let trans = trans.into();
-            self.view_mat = self
-                .view_mat
-                .pre_translate(trans.cast_unit())
-                .with_destination();
-        }
-
-        #[rustfmt::skip]
-        fn create_view_matrix(
-            eye: impl Into<WPoint3>,
-            center: impl Into<WVec3>,
-            up: impl Into<WVec3>,
-        ) -> Transform3D<f64, CameraSpace, WorldSpace> {
-            let eye = eye.into();
-            let center = center.into();
-            let up = up.into().normalize();
-
-            let f = (center - eye.to_vector()).normalize();
-            let s = f.cross(up).normalize();
-            let u = s.cross(f).normalize();
-
-            CWTransform::new(
-                s.x, s.y, s.z, 0.0,
-                u.x, u.y, u.z, 0.0,
-                -f.x, -f.y, -f.z, 0.0,
-                eye.x, eye.y, eye.z, 1.0
-            )
-        }
-
-        pub(super) fn world_to_camera_transform(&self) -> WCTransform {
-            self.view_mat.inverse().unwrap()
-        }
-    }
-
-    #[derive(Debug, Copy, Clone)]
-    pub struct Perspective {
-        pub fovy: f64,
-        pub width: usize,
-        pub height: usize,
-        pub aspect: f64,
-        pub znear: f64,
-        pub zfar: f64,
-    }
-
-    impl Default for Perspective {
-        fn default() -> Self {
-            Self::new(45.0, 1920, 1080, 0.1, 100.0)
-        }
-    }
-
-    impl Perspective {
-        pub fn new(fovy: f64, width: usize, height: usize, znear: f64, zfar: f64) -> Self {
-            let aspect = width as f64 / height as f64;
-            Self {
-                fovy,
-                width,
-                height,
-                aspect,
-                znear,
-                zfar,
-            }
-        }
+    ) -> Result<Perspective, PerspectiveError> {
+        Perspective::try_new(fovy, width, height, znear, zfar)
     }
 }
 
@@ -332,4 +230,58 @@ fn frustum(
         )
         .to_array_transposed(),
     )
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn camera() -> Camera {
+        Camera::new()
+            .observation(
+                Camera::look_at(
+                    (8.0, 6.0, 4.0),
+                    WVec3::new(0.0, 0.0, 0.0),
+                    WVec3::new(0.0, 0.0, 1.0),
+                )
+                .expect("this camera looks at a point in front of it"),
+            )
+            .perspective(
+                Camera::perspective(50.0, 1024, 768, 0.1, 20.0)
+                    .expect("these frustum parameters are well formed"),
+            )
+            .build()
+    }
+
+    #[test]
+    fn the_ray_through_the_middle_pixel_looks_where_the_camera_looks() {
+        let camera = camera();
+        let ray = camera.ray_for_px_coords(512.0, 384.0);
+
+        assert!((ray.point - camera.observation.eye()).length() < 1.0e-12);
+        assert!(
+            (ray.dir - camera.observation.look()).length() < 1.0e-12,
+            "the middle pixel looked along {:?} instead of {:?}",
+            ray.dir,
+            camera.observation.look()
+        );
+    }
+
+    #[test]
+    fn the_ray_through_a_pixel_projects_back_onto_that_pixel() {
+        let camera = camera();
+        let (x, y) = (301.0, 122.0);
+        let ray = camera.ray_for_px_coords(x, y);
+
+        let along = ray.point + ray.dir * 7.0;
+        let projected = camera
+            .camera_transformation()
+            .transform_point3d(along)
+            .expect("a point in front of the camera projects");
+
+        assert!(
+            (projected.x - x).abs() < 1.0e-9 && (projected.y - y).abs() < 1.0e-9,
+            "the ray for pixel ({x}, {y}) projected back to {projected:?}"
+        );
+    }
 }

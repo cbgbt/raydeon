@@ -1,24 +1,47 @@
+use bon::Builder;
 use ray::HitShape;
 
 use crate::*;
 
 pub trait Light: std::fmt::Debug + Send + Sync + 'static {
-    fn compute_illumination<'s>(&self, scene: &'s Scene, hit_shape: HitShape<'s>) -> f64;
+    /// The light this source delivers to `hit_shape`, as seen from `eye`.
+    ///
+    /// The viewer's position is part of the query because view-dependent
+    /// terms (specular highlights) cannot be computed without it.
+    fn compute_illumination<'s>(
+        &self,
+        scene: &'s Scene,
+        hit_shape: HitShape<'s>,
+        eye: WPoint3,
+    ) -> f64;
 }
 
-#[derive(Debug, Copy, Clone, Default)]
+#[derive(Debug, Copy, Clone, Builder)]
+#[builder(start_fn(name = new))]
 pub struct PointLight {
-    intensity: f64,
-    specular_intensity: f64,
+    #[builder(into)]
     position: WPoint3,
-
+    intensity: f64,
+    #[builder(default)]
+    specular_intensity: f64,
+    /// Attenuation is `1 / (constant + linear * d + quadratic * d^2)`. The
+    /// constant term defaults to 1 so that an omitted attenuation means "no
+    /// falloff" rather than a division by zero.
+    #[builder(default = 1.0)]
     constant_attenuation: f64,
+    #[builder(default)]
     linear_attenuation: f64,
+    #[builder(default)]
     quadratic_attenuation: f64,
 }
 
 impl Light for PointLight {
-    fn compute_illumination<'s>(&self, scene: &'s Scene, hit_shape: HitShape<'s>) -> f64 {
+    fn compute_illumination<'s>(
+        &self,
+        scene: &'s Scene,
+        hit_shape: HitShape<'s>,
+        eye: WPoint3,
+    ) -> f64 {
         let _light_hitpoint = match self.light_hitpoint_for_hit(scene, hit_shape) {
             Some(hit) => hit,
             None => return 0.0,
@@ -27,7 +50,7 @@ impl Light for PointLight {
         let mut illum = 0.0;
 
         illum += self.diffuse_illumination(hit_shape);
-        let specular = self.specular_illumination(hit_shape);
+        let specular = self.specular_illumination(hit_shape, eye);
         tracing::debug!("specular: {}", specular);
         illum += specular;
 
@@ -42,25 +65,6 @@ impl Light for PointLight {
 }
 
 impl PointLight {
-    pub fn new(
-        intensity: f64,
-        specular_intensity: f64,
-        position: impl Into<WPoint3>,
-        constant_attenuation: f64,
-        linear_attenuation: f64,
-        quadratic_attenuation: f64,
-    ) -> Self {
-        let position = position.into();
-        Self {
-            intensity,
-            specular_intensity,
-            position,
-            constant_attenuation,
-            linear_attenuation,
-            quadratic_attenuation,
-        }
-    }
-
     pub fn intensity(&self) -> f64 {
         self.intensity
     }
@@ -93,12 +97,12 @@ impl PointLight {
         material.diffuse * self.intensity * diffuse_scale
     }
 
-    fn specular_illumination(&self, hit_shape: HitShape) -> f64 {
+    fn specular_illumination(&self, hit_shape: HitShape, eye: WPoint3) -> f64 {
         let hitpoint = hit_shape.hit_data;
         let material = hit_shape.hit_shape.material().unwrap_or_default();
         let to_light = (self.position - hitpoint.hit_point).normalize();
 
-        let v = hitpoint.hit_point.to_vector() * -1.0;
+        let v = (eye - hitpoint.hit_point).normalize();
         let h = (to_light + v).normalize();
 
         let ps = material.specular * self.specular_intensity;

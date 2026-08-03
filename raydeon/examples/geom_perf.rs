@@ -20,11 +20,17 @@ fn main() {
     let znear = 0.1;
     let zfar = 100.0;
 
-    let scene = Scene::new().geometry(generate_scene()).construct();
+    let scene = Scene::new().geometry(generate_scene()).build();
 
-    let camera = Camera::configure()
-        .observation(Camera::look_at(eye, focus, up))
-        .perspective(Camera::perspective(fovy, width, height, znear, zfar))
+    let camera = Camera::new()
+        .observation(
+            Camera::look_at(eye, focus, up)
+                .expect("the example's camera looks at a point in front of it"),
+        )
+        .perspective(
+            Camera::perspective(fovy, width, height, znear, zfar)
+                .expect("the example's frustum parameters are well formed"),
+        )
         .build();
 
     let rendering = scene.attach_camera(camera).render();

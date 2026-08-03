@@ -23,15 +23,15 @@ impl PointLight {
         quadratic_attenuation: f64,
     ) -> PyResult<Self> {
         let position = Point3::try_from(position)?;
-        Ok(raydeon::lights::PointLight::new(
-            intensity,
-            specular_intensity,
-            position.0.cast_unit(),
-            constant_attenuation,
-            linear_attenuation,
-            quadratic_attenuation,
-        )
-        .into())
+        Ok(raydeon::lights::PointLight::new()
+            .position(position.0.cast_unit())
+            .intensity(intensity)
+            .specular_intensity(specular_intensity)
+            .constant_attenuation(constant_attenuation)
+            .linear_attenuation(linear_attenuation)
+            .quadratic_attenuation(quadratic_attenuation)
+            .build()
+            .into())
     }
 
     #[getter]
@@ -67,12 +67,6 @@ impl PointLight {
     fn __repr__(slf: &Bound<'_, Self>) -> PyResult<String> {
         let class_name = slf.get_type().qualname()?;
         Ok(format!("{}<{:#?}>", class_name, slf.borrow().0))
-    }
-}
-
-impl Default for PointLight {
-    fn default() -> Self {
-        raydeon::lights::PointLight::default().into()
     }
 }
 

@@ -55,6 +55,7 @@ fn world_uniform(test: &TestScene) -> StrategyRender {
     for ball in &test.balls {
         lines.extend(hatch::ball_rings(
             &test.scene,
+            test.camera.observation.eye(),
             ball,
             WVec3::new(0.0, 0.0, 1.0),
             HATCH_SPACING,
@@ -94,6 +95,7 @@ fn crosshatch_tonal(test: &TestScene) -> StrategyRender {
         for (axis, spacing, threshold) in ring_axes {
             lines.extend(hatch::ball_rings(
                 &test.scene,
+                test.camera.observation.eye(),
                 ball,
                 axis,
                 spacing,
@@ -123,6 +125,7 @@ fn light_flow(test: &TestScene) -> StrategyRender {
         let axis = ball.center - test.light_position;
         lines.extend(hatch::ball_rings(
             &test.scene,
+            test.camera.observation.eye(),
             ball,
             axis,
             HATCH_SPACING,

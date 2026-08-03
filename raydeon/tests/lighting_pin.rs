@@ -45,21 +45,26 @@ fn illumination_matches_the_hand_derived_value() {
         .geometry(vec![cuboid.clone()])
         .lighting(
             SceneLighting::new()
-                .with_lights(vec![Arc::new(PointLight::new(
-                    20.0,
-                    0.0,
-                    (5.5, 12.0, 7.3),
-                    0.0,
-                    0.09,
-                    0.23,
-                ))])
+                .with_lights(vec![Arc::new(
+                    PointLight::new()
+                        .position((5.5, 12.0, 7.3))
+                        .intensity(20.0)
+                        .specular_intensity(0.0)
+                        .constant_attenuation(0.0)
+                        .linear_attenuation(0.09)
+                        .quadratic_attenuation(0.23)
+                        .build(),
+                )])
                 .with_ambient_lighting(0.13),
         )
-        .construct();
+        .build();
 
     // The centre of the cuboid's top face, which the light sees directly.
     let hit_data = HitData::new(WPoint3::new(0.0, 0.0, 1.0), 5.0, WVec3::new(0.0, 0.0, 1.0));
-    let illumination = scene.illumination_for_hit(HitShape::new(hit_data, &cuboid));
+    // The light's specular intensity is 0, so this eye position cannot
+    // influence the result — it only has to be somewhere.
+    let eye = WPoint3::new(8.0, 6.0, 4.0);
+    let illumination = scene.illumination_for_hit(HitShape::new(hit_data, &cuboid), eye);
 
     assert!(
         (illumination - EXPECTED_ILLUMINATION).abs() < 1e-9,

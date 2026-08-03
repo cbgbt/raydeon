@@ -42,7 +42,7 @@ impl Scene {
             raydeon::Scene::new()
                 .geometry(geometry)
                 .lighting(lighting)
-                .construct(),
+                .build(),
         );
         Ok(Self { scene })
     }

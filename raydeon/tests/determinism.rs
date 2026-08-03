@@ -27,17 +27,23 @@ fn occluding_scene() -> Scene {
         })
         .collect::<Vec<_>>();
 
-    Scene::new().geometry(geometry).construct()
+    Scene::new().geometry(geometry).build()
 }
 
 fn camera() -> Camera {
-    Camera::configure()
-        .observation(Camera::look_at(
-            WPoint3::new(8.0, 6.0, 4.0),
-            WVec3::new(0.0, 0.0, 0.0),
-            WVec3::new(0.0, 0.0, 1.0),
-        ))
-        .perspective(Camera::perspective(50.0, 1024, 1024, 0.1, 20.0))
+    Camera::new()
+        .observation(
+            Camera::look_at(
+                WPoint3::new(8.0, 6.0, 4.0),
+                WVec3::new(0.0, 0.0, 0.0),
+                WVec3::new(0.0, 0.0, 1.0),
+            )
+            .expect("the test camera looks at a point in front of it"),
+        )
+        .perspective(
+            Camera::perspective(50.0, 1024, 1024, 0.1, 20.0)
+                .expect("the test frustum parameters are well formed"),
+        )
         .build()
 }
 
