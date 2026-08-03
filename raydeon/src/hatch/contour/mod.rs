@@ -68,17 +68,13 @@ fn field_contours(
     let values = sample_grid(cam, shape, grid, field);
     let polylines = iso_polylines(&values, field_iso(field));
 
+    let position = |crossing: &EdgeCrossing| refined_position(cam, shape, grid, field, crossing);
     let raw_segments: Vec<LineSegment3D<WorldSpace>> = polylines
         .into_iter()
         .flat_map(|crossings| {
             crossings
                 .windows(2)
-                .map(|pair| {
-                    LineSegment3D::new_segment(
-                        crossing_position(grid, &pair[0]),
-                        crossing_position(grid, &pair[1]),
-                    )
-                })
+                .map(|pair| LineSegment3D::new_segment(position(&pair[0]), position(&pair[1])))
                 .collect::<Vec<_>>()
         })
         .collect();
@@ -162,13 +158,63 @@ fn cell_center(grid: &SurfaceGrid, row: usize, col: usize) -> (WPoint3, WVec3) {
     (position, normal)
 }
 
-/// The world position of one crossing: linear interpolation, by its
-/// fraction, between its edge's two lifted node positions.
-fn crossing_position(grid: &SurfaceGrid, crossing: &EdgeCrossing) -> WPoint3 {
+/// How many times a crossing is bisected along its edge: the placement
+/// error shrinks to the cell size over `2^REFINE_STEPS`.
+const REFINE_STEPS: usize = 10;
+
+/// The world position of one crossing, root-refined by bisecting the actual
+/// field along the edge.
+///
+/// Marching detects a crossing from the edge's two node values; placing it
+/// by interpolating those values staircases wherever the field jumps (a
+/// hard shadow edge is a step, and linear interpolation lands every
+/// crossing a fixed fraction into its cell). The field is cheap to sample
+/// anywhere, so the position is found by bisection instead: the vertex
+/// lands on the true boundary and straight shadow edges come out straight.
+fn refined_position(
+    cam: &SceneCamera,
+    shape: &DrawableShape,
+    grid: &SurfaceGrid,
+    field: &ContourField,
+    crossing: &EdgeCrossing,
+) -> WPoint3 {
     let ((r0, c0), (r1, c1)) = crossing.edge.nodes();
-    let (p0, _) = grid.node(r0, c0);
-    let (p1, _) = grid.node(r1, c1);
-    p0 + (p1 - p0) * crossing.fraction
+    let (p0, n0) = grid.node(r0, c0);
+    let (p1, n1) = grid.node(r1, c1);
+
+    let along = |t: f64| {
+        let point = p0 + (p1 - p0) * t;
+        let blended = n0 * (1.0 - t) + n1 * t;
+        let normal = if blended.square_length() > 0.0 {
+            blended.normalize()
+        } else {
+            n0
+        };
+        (point, normal)
+    };
+    let inside = |t: f64| {
+        let (point, normal) = along(t);
+        field_value(cam, shape, field, point, normal) < field_iso(field)
+    };
+
+    let (inside_lo, inside_hi) = (inside(0.0), inside(1.0));
+    if inside_lo == inside_hi {
+        // The chord samples disagree with the node classification marching
+        // used (possible only at exact-iso float edges); the interpolated
+        // fraction is the honest fallback.
+        return p0 + (p1 - p0) * crossing.fraction;
+    }
+
+    let (mut lo, mut hi) = (0.0_f64, 1.0_f64);
+    for _ in 0..REFINE_STEPS {
+        let mid = (lo + hi) / 2.0;
+        if inside(mid) == inside_lo {
+            lo = mid;
+        } else {
+            hi = mid;
+        }
+    }
+    along((lo + hi) / 2.0).0
 }
 
 /// Clips one raw contour segment to `surface`'s outline minus its holes,
@@ -400,19 +446,32 @@ mod tests {
         let near_center: Vec<f64> = segments
             .iter()
             .flat_map(|segment| [segment.p1(), segment.p2()])
-            .filter(|point| point.x.abs() < 0.5 && point.y.abs() < 3.5)
+            .filter(|point| point.x.abs() < 2.0 && point.y.abs() < 3.5)
             .map(|point| point.y)
             .collect();
         assert!(
             !near_center.is_empty(),
             "test fixture sanity: some crossing near x=0"
         );
+        // The shadow region has two straight boundaries: its far edge at
+        // the analytic shadow line, and its near edge along the wall base
+        // at y = 0. Root refinement puts every vertex ON one of them (small
+        // slack for the sample lift shifting the boundary), so the contour
+        // is straight — not a staircase at grid rhythm.
+        let mut saw_far_edge = false;
         for y in near_center {
+            let to_far = (y - shadow_edge_y).abs();
+            let to_base = y.abs();
+            saw_far_edge |= to_far < 0.02;
             assert!(
-                (y - shadow_edge_y).abs() < 1.0,
-                "contour y {y} should sit near the analytic shadow edge {shadow_edge_y}"
+                to_far < 0.02 || to_base < 0.02,
+                "contour y {y} should sit on the shadow edge {shadow_edge_y} or the wall base"
             );
         }
+        assert!(
+            saw_far_edge,
+            "test fixture sanity: the far shadow edge must be contoured"
+        );
     }
 
     #[test]
