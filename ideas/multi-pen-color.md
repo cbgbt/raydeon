@@ -27,20 +27,45 @@ Occlusion = Clear
           | Through(Vec<TransmissiveHit>)   // ordered media stack, near to far
 ```
 
-A material's transmission policy then transforms strokes sampled behind
-it:
+**What glass does to the world behind it is an open design space** (Sean,
+2026-08-03: "i don't know if just cyan is enough or if its cyan hatching
+with interesting properties or everything is cyan"). Three distinct models,
+none obviously right from the armchair:
 
-- **re-pen**: strokes behind the cyan pane plot with the cyan pen — the
-  glass literally recolors its world.
-- **tone shift**: transmission multiplies tone (dimmer behind glass ->
-  sparser hatching), stacking per pane.
-- **character**: frosted glass adds positional jitter to samples; old
-  glass gets a refraction wobble; a screen door gets a dash pattern.
+- **Re-pen**: everything behind the pane plots in the glass's pen. Boldest
+  stylization; the palette dies at the pane (a brown branch behind the
+  window turns cyan). Right for stained glass, wrong for a shopfront.
+- **Overlay**: geometry behind keeps its own pens and hatching (perhaps
+  lightened); the pane contributes its own marks — streaks, a reflection
+  wedge, grazing-angle density. Closest to how artists draw glass, and
+  nearly free: a glass material with its own `HatchStyle` already draws
+  its own marks; it only also needs to not-occlude.
+- **Filter**: behind-glass strokes keep their pens but get modulated —
+  tone dimmed, runs dashed, samples jittered (frost/wobble/screen-door).
 
-Light interacts the same way: shadow rays that hit transmissive surfaces
-attenuate instead of blocking, so glass casts pale shadows and a cyan
-skylight literally shifts the hatching density (and pen) of the floor
-below it.
+Likely answer: all three exist, chosen per material. To be settled by
+looking, not deriving — see "Engine vs app" below.
+
+Light interacts the same way regardless of model: shadow rays that hit
+transmissive surfaces attenuate instead of blocking, so glass casts pale
+shadows and a cyan skylight shifts the hatching of the floor below it.
+
+### Engine vs app
+
+The engine ships **facts**, never aesthetics:
+
+1. The occlusion query returns the ordered media stack, not a boolean.
+2. Strokes carry provenance: source pen plus the media they were seen
+   through.
+3. Shadow rays attenuate through transmissive materials.
+
+**Policy starts app-side.** With media stacks on strokes, each model above
+is a stroke post-transform an app can write in a screenful of code. The
+way to choose between them is the hatch-lab method: a *glass lab* — the
+tree behind a glazed wall, all three policies rendered side by side,
+compared visually. Policies that win graduate into the engine as named
+transmission styles, exactly as the validated hatch strategies became
+`HatchStyle` presets. No cyan is hardcoded in the engine at any point.
 
 ### 3. Optical color mixing (the far shore)
 
