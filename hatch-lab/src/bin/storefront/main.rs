@@ -41,6 +41,17 @@ enum ContourChoice {
 impl ContourChoice {
     /// Tone-band edges of `style`, one contour per band this material's
     /// hatch already steps at — off entirely unless this run wants them.
+    fn shadow(self, threshold: f64) -> Option<ContourStyle> {
+        match self {
+            ContourChoice::Off => None,
+            ContourChoice::On => Some(ContourStyle::shadow(
+                ToneThreshold::try_new(threshold)
+                    .expect("storefront thresholds are tone fractions"),
+            )),
+        }
+    }
+
+    #[allow(dead_code)] // kept for A/B experimentation with full band-edge contours
     fn band_edges(self, style: &HatchStyle) -> Option<ContourStyle> {
         match self {
             ContourChoice::Off => None,
@@ -115,7 +126,7 @@ fn build_scene(contours: ContourChoice) -> Scene {
         .shininess(8.0)
         .pen(PenId::new(0))
         .hatch(facade_style.clone())
-        .maybe_contours(contours.band_edges(&facade_style))
+        .maybe_contours(contours.shadow(0.55))
         .build();
     let ink_stochastic = material(HatchStyle::stochastic(base), 0);
     let wood_grain = HatchStyle::Tonal {
@@ -139,7 +150,7 @@ fn build_scene(contours: ContourChoice) -> Scene {
         .shininess(6.0)
         .pen(PenId::new(1))
         .hatch(wood_grain.clone())
-        .maybe_contours(contours.band_edges(&wood_grain))
+        .maybe_contours(contours.shadow(0.35))
         .build();
     let leaf_flow = material(HatchStyle::light_flow(sun, base), 2);
     let slate_tonal = material(HatchStyle::tonal_crosshatch(tight), 3);
