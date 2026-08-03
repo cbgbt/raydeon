@@ -129,7 +129,8 @@ impl CollisionGeometry for AxisAlignedCuboid {
         let dir_inv = dir_inv.to_array();
         let t1 = t1.to_array();
         let t2 = t2.to_array();
-        let mut hit_normal = [0.0; 3];
+        let mut entry_normal = [0.0; 3];
+        let mut exit_axis = 0;
 
         let mut tmin = f64::NEG_INFINITY;
         let mut tmax = f64::INFINITY;
@@ -145,22 +146,35 @@ impl CollisionGeometry for AxisAlignedCuboid {
             if t1i > tmin {
                 tmin = t1i;
                 // Determine the normal direction.
-                hit_normal = [0.0; 3];
-                hit_normal[i] = if dir_inv[i] < 0.0 { 1.0 } else { -1.0 };
+                entry_normal = [0.0; 3];
+                entry_normal[i] = if dir_inv[i] < 0.0 { 1.0 } else { -1.0 };
             }
-            tmax = f64::min(tmax, t2i);
+            if t2i < tmax {
+                tmax = t2i;
+                exit_axis = i;
+            }
 
             if tmin > tmax {
                 return None;
             }
         }
 
-        if tmin < 0.0 {
+        if tmax < 0.0 {
             return None;
         }
 
-        let hit_point = ray.point + ray.dir * tmin;
-        Some(HitData::new(hit_point, tmin, hit_normal))
+        // A ray starting inside the solid hits the wall it exits through;
+        // one starting outside hits the wall it enters through.
+        let (t, normal) = if tmin >= 0.0 {
+            (tmin, entry_normal)
+        } else {
+            let mut exit_normal = [0.0; 3];
+            exit_normal[exit_axis] = if dir_inv[exit_axis] < 0.0 { -1.0 } else { 1.0 };
+            (tmax, exit_normal)
+        };
+
+        let hit_point = ray.point + ray.dir * t;
+        Some(HitData::new(hit_point, t, normal))
     }
 
     fn bounding_box(&self) -> Option<crate::AABB3<crate::WorldSpace>> {
@@ -203,5 +217,39 @@ mod test {
                 (0.0, 1.0, 0.0)
             ))
         );
+    }
+
+    #[test]
+    fn test_ray_from_inside_hits_exit_wall() {
+        // Given a solid unit cuboid
+        let prism = AxisAlignedCuboid::new()
+            .min((0.0, 0.0, 0.0))
+            .max((1.0, 1.0, 1.0))
+            .build();
+
+        // When rays start inside it, they hit the wall they exit through,
+        // with the outward normal of that wall.
+        let up = Ray::new(WPoint3::new(0.5, 0.5, 0.1), WVec3::new(0.0, 0.0, 1.0));
+        assert_eq!(
+            prism.hit_by(&up),
+            Some(HitData::new(
+                WPoint3::new(0.5, 0.5, 1.0),
+                0.9,
+                (0.0, 0.0, 1.0)
+            ))
+        );
+        let down = Ray::new(WPoint3::new(0.5, 0.5, 0.1), WVec3::new(0.0, 0.0, -1.0));
+        assert_eq!(
+            prism.hit_by(&down),
+            Some(HitData::new(
+                WPoint3::new(0.5, 0.5, 0.0),
+                0.1,
+                (0.0, 0.0, -1.0)
+            ))
+        );
+
+        // Then a ray leaving the cuboid entirely behind it still misses.
+        let past = Ray::new(WPoint3::new(0.5, 0.5, 2.0), WVec3::new(0.0, 0.0, 1.0));
+        assert_eq!(prism.hit_by(&past), None);
     }
 }
