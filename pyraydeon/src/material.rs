@@ -5,13 +5,13 @@ pywrap!(Material, raydeon::material::Material);
 #[pymethods]
 impl Material {
     #[new]
-    #[pyo3(signature = (diffuse=0.0, specular=0.0, shininess=0.0, tag=0))]
-    fn new(diffuse: f64, specular: f64, shininess: f64, tag: usize) -> PyResult<Self> {
+    #[pyo3(signature = (diffuse=0.0, specular=0.0, shininess=0.0, pen=0))]
+    fn new(diffuse: f64, specular: f64, shininess: f64, pen: usize) -> PyResult<Self> {
         Ok(raydeon::material::Material::new()
             .diffuse(diffuse)
             .specular(specular)
             .shininess(shininess)
-            .tag(tag)
+            .pen(raydeon::PenId::new(pen))
             .build()
             .into())
     }
@@ -32,8 +32,8 @@ impl Material {
     }
 
     #[getter]
-    fn tag(&self) -> usize {
-        self.tag
+    fn pen(&self) -> usize {
+        self.pen.value()
     }
 
     fn __repr__(slf: &Bound<'_, Self>) -> PyResult<String> {

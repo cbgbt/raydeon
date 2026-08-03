@@ -5,7 +5,7 @@
 //! strokes are conceived.
 use crate::hatch;
 use crate::scene::{Face, TestScene};
-use raydeon::{CameraSpace, Point2, SegmentKind, WVec3};
+use raydeon::{CameraSpace, Point2, StrokeKind, WVec3};
 
 /// A single screen-space pen stroke.
 pub type Stroke = (Point2<CameraSpace>, Point2<CameraSpace>);
@@ -36,11 +36,11 @@ fn screen_space_baseline(test: &TestScene) -> StrategyRender {
     let scene_camera = test.scene.attach_camera(test.camera.clone()).with_seed(42);
     let mut outline = Vec::new();
     let mut hatch = Vec::new();
-    for segment in scene_camera.render_with_lighting() {
-        let points = (segment.p1, segment.p2);
-        match segment.kind {
-            SegmentKind::Path => outline.push(points),
-            SegmentKind::ScreenSpaceHatch(_) => hatch.push(points),
+    for stroke in scene_camera.render_with_lighting().strokes() {
+        let points = (stroke.p1, stroke.p2);
+        match stroke.kind {
+            StrokeKind::Outline => outline.push(points),
+            StrokeKind::Hatch => hatch.push(points),
         }
     }
     StrategyRender { outline, hatch }
@@ -152,13 +152,14 @@ fn light_flow_angle(test: &TestScene, face: &Face) -> f64 {
 /// Clips hatch lines against the scene and pairs them with outline geometry.
 fn project(
     test: &TestScene,
-    lines: Vec<raydeon::LineSegment3D<'static, raydeon::WorldSpace>>,
+    lines: Vec<raydeon::LineSegment3D<raydeon::WorldSpace>>,
 ) -> StrategyRender {
     let scene_camera = test.scene.attach_camera(test.camera.clone());
     let outline = scene_camera
         .render()
-        .into_iter()
-        .map(|segment| (segment.p1, segment.p2))
+        .strokes()
+        .iter()
+        .map(|stroke| (stroke.p1, stroke.p2))
         .collect();
     let hatch = scene_camera
         .clip_and_project(&lines)

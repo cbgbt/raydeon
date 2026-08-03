@@ -22,7 +22,7 @@ impl Shape for BallShape {
         Some(vec![Arc::new(self.sphere)])
     }
 
-    fn paths(&self, cam: &Camera) -> Vec<LineSegment3D<'_, WorldSpace>> {
+    fn paths(&self, cam: &Camera) -> Vec<LineSegment3D<WorldSpace>> {
         let center = self.sphere.center;
         // Inflate slightly so the contour survives its own occlusion check.
         let radius = self.sphere.radius + 0.006;
@@ -79,7 +79,7 @@ impl Shape for Decal {
         None
     }
 
-    fn paths(&self, _cam: &Camera) -> Vec<LineSegment3D<'_, WorldSpace>> {
+    fn paths(&self, _cam: &Camera) -> Vec<LineSegment3D<WorldSpace>> {
         // Push the frame slightly off the wall so it survives occlusion.
         let lift = self.face.normal * 0.01;
         let corner = |x: f64, y: f64| self.face.to_world(FacePoint::new(x, y)) + lift;

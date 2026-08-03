@@ -32,7 +32,7 @@ fn main() {
         .render_options(CameraOptions::configure().pen_px_size(4.0).build())
         .build();
 
-    let paths = scene.attach_camera(camera).render();
+    let rendering = scene.attach_camera(camera).render();
 
     // We currently don't have any functionality to aid in emitting SVG images, so you will
     // be required to use the [svg crate.](https://crates.io/crates/svg)
@@ -56,8 +56,8 @@ fn main() {
     let mut item_group = svg::node::element::Group::new()
         .set("transform", format!("translate(0, {}) scale(1,-1)", height));
 
-    for path in paths {
-        let (p1, p2) = (path.p1, path.p2);
+    for stroke in rendering.strokes() {
+        let (p1, p2) = (stroke.p1, stroke.p2);
         item_group = item_group.add(
             svg::node::element::Line::new()
                 .set("x1", p1.x)

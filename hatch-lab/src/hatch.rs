@@ -28,11 +28,7 @@ pub fn tone_at(
 /// Generates parallel lines across `face` at `angle` radians (measured in
 /// face coordinates), spaced `spacing` apart, clipped to the outline minus
 /// holes. Returns world-space segments.
-pub fn face_hatch_lines(
-    face: &Face,
-    angle: f64,
-    spacing: f64,
-) -> Vec<LineSegment3D<'static, WorldSpace>> {
+pub fn face_hatch_lines(face: &Face, angle: f64, spacing: f64) -> Vec<LineSegment3D<WorldSpace>> {
     let dir = euclid::Vector2D::<f64, crate::scene::FaceSpace>::new(angle.cos(), angle.sin());
     let perp = euclid::Vector2D::<f64, crate::scene::FaceSpace>::new(-dir.y, dir.x);
 
@@ -77,9 +73,9 @@ pub fn filter_by_tone(
     scene: &Scene,
     face_drawable: &raydeon::DrawableShape,
     normal: WVec3,
-    segment: &LineSegment3D<'static, WorldSpace>,
+    segment: &LineSegment3D<WorldSpace>,
     keep: impl Fn(f64, u64) -> bool,
-) -> Vec<LineSegment3D<'static, WorldSpace>> {
+) -> Vec<LineSegment3D<WorldSpace>> {
     let num_chops = (segment.length() / SAMPLE_LEN).ceil() as usize;
     if num_chops == 0 {
         return Vec::new();
@@ -107,7 +103,7 @@ pub fn hatch_faces(
     angle_for_face: impl Fn(&Face) -> f64,
     spacing: f64,
     keep: impl Fn(f64, u64) -> bool + Copy,
-) -> Vec<LineSegment3D<'static, WorldSpace>> {
+) -> Vec<LineSegment3D<WorldSpace>> {
     test.faces
         .iter()
         .flat_map(|face| {
@@ -129,7 +125,7 @@ pub fn ball_rings(
     axis: WVec3,
     spacing: f64,
     keep: impl Fn(f64, u64) -> bool,
-) -> Vec<LineSegment3D<'static, WorldSpace>> {
+) -> Vec<LineSegment3D<WorldSpace>> {
     let axis = axis.normalize();
     let seed = if axis.x.abs() < 0.9 {
         WVec3::new(1.0, 0.0, 0.0)

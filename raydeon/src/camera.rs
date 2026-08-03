@@ -84,10 +84,10 @@ impl Camera {
     }
 
     /// Chops a line segment into subsegments based on distance from camera
-    pub fn chop_segment<'a, 's>(
+    pub fn chop_segment<'a>(
         &self,
-        segment: &'a LineSegment3D<'s, WorldSpace>,
-    ) -> Option<SlicedSegment3D<'a, 's, WorldSpace>> {
+        segment: &'a LineSegment3D<WorldSpace>,
+    ) -> Option<SlicedSegment3D<'a, WorldSpace>> {
         let p1 = segment.p1().to_vector();
         let p2 = segment.p2().to_vector();
 

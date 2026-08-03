@@ -33,7 +33,11 @@ fn main() {
         .format_timestamp_nanos()
         .init();
 
-    let cube_material = Material::new_mat(3.0, 2.0, 2.0, 0);
+    let cube_material = Material::new()
+        .diffuse(3.0)
+        .specular(2.0)
+        .shininess(2.0)
+        .build();
     let scene = Scene::new()
         .geometry(vec![
             DrawableShape::new()
@@ -115,8 +119,8 @@ fn main() {
     let mut item_group = svg::node::element::Group::new()
         .set("transform", format!("translate(0, {}) scale(1,-1)", height));
 
-    for path in render_result {
-        let (p1, p2) = (path.p1, path.p2);
+    for stroke in render_result.strokes() {
+        let (p1, p2) = (stroke.p1, stroke.p2);
         item_group = item_group.add(
             svg::node::element::Line::new()
                 .set("x1", p1.x)

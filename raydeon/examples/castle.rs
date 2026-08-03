@@ -69,7 +69,7 @@ fn main() {
         )
         .construct();
 
-    let paths = scene
+    let rendering = scene
         .attach_camera(camera)
         .with_seed(0)
         .render_with_lighting();
@@ -96,8 +96,8 @@ fn main() {
     let mut item_group = svg::node::element::Group::new()
         .set("transform", format!("translate(0, {}) scale(1,-1)", height));
 
-    for path in paths {
-        let (p1, p2) = (path.p1, path.p2);
+    for stroke in rendering.strokes() {
+        let (p1, p2) = (stroke.p1, stroke.p2);
         item_group = item_group.add(
             svg::node::element::Line::new()
                 .set("x1", p1.x)

@@ -231,37 +231,37 @@ impl<'s> SceneCamera<'s> {
         self.camera.translate(trans);
     }
 
-    fn geometry_paths(&self) -> Vec<LineSegment3D<'s, WorldSpace>> {
-        self.scene
-            .geometry
-            .geometry
-            .iter()
-            .flat_map(|shape| {
-                let mut paths = shape.paths(&self.camera);
-                paths.iter_mut().for_each(|path| path.set_shape(shape));
-                paths
-            })
-            .collect()
-    }
-
     fn clip_filter(&self, path: &LineSegment3D<WorldSpace>) -> bool {
         self.scene
             .visible(self.camera.observation.eye(), path.midpoint())
     }
 
-    pub fn render(&self) -> Vec<DrawableSegment<'s>> {
+    pub fn render(&self) -> Rendering {
         info!("Querying geometry for subpaths");
-        let parent_paths = self.geometry_paths();
 
-        self.clip_and_project(&parent_paths)
-            .into_iter()
-            .map(|segment| {
-                DrawableSegment::new()
-                    .segment(segment)
-                    .kind(SegmentKind::Path)
-                    .build()
+        // Each shape is processed on its own so that every stroke can carry the
+        // pen of the material which drew it.
+        let strokes = self
+            .scene
+            .geometry
+            .geometry
+            .par_iter()
+            .flat_map(|shape| {
+                let pen = shape.material().map(|mat| mat.pen).unwrap_or_default();
+                let paths = shape.paths(&self.camera);
+                self.clip_and_project(&paths)
+                    .into_iter()
+                    .map(|segment| Stroke {
+                        p1: segment.p1,
+                        p2: segment.p2,
+                        pen,
+                        kind: StrokeKind::Outline,
+                    })
+                    .collect::<Vec<_>>()
             })
-            .collect()
+            .collect();
+
+        Rendering::new(strokes)
     }
 
     /// Clips the given world-space segments against scene geometry, keeping
@@ -270,10 +270,10 @@ impl<'s> SceneCamera<'s> {
     /// Segments lying on a surface of scene geometry survive their own
     /// surface's occlusion check, so this can render caller-generated
     /// surface detail (such as hatch lines) with correct hidden-line removal.
-    pub fn clip_and_project<'a>(
+    pub fn clip_and_project(
         &self,
-        parent_paths: &[LineSegment3D<'a, WorldSpace>],
-    ) -> Vec<LineSegment2D<'a, CameraSpace>> {
+        parent_paths: &[LineSegment3D<WorldSpace>],
+    ) -> Vec<LineSegment2D<CameraSpace>> {
         info!(
             "Caching line segment chunks based on camera position, starting with {} segments",
             parent_paths.len()
@@ -325,8 +325,8 @@ impl<'s> SceneCamera<'s> {
         paths
     }
 
-    pub fn render_with_lighting(&self) -> Vec<DrawableSegment<'s>> {
-        let geometry_paths = self.render();
+    pub fn render_with_lighting(&self) -> Rendering {
+        let geometry_render = self.render();
         let mut rng = match self.seed {
             Some(seed) => rand::rngs::StdRng::seed_from_u64(seed),
             None => rand::rngs::StdRng::from_entropy(),
@@ -339,14 +339,7 @@ impl<'s> SceneCamera<'s> {
                 brightness > (threshold * self.camera.render_options.vert_hatch_brightness_scaling)
             })
             .into_iter()
-            .map(|vert_segment| {
-                DrawableSegment::new()
-                    .segment(vert_segment)
-                    .kind(SegmentKind::ScreenSpaceHatch(
-                        ScreenSpaceHatchKind::Vertical,
-                    ))
-                    .build() as DrawableSegment<'s>
-            })
+            .map(screen_hatch_stroke)
             .collect::<Vec<_>>();
 
         info!("Generated {} vertical hatch lines.", vert_lines.len());
@@ -358,25 +351,18 @@ impl<'s> SceneCamera<'s> {
                 brightness > (threshold * self.camera.render_options.diag_hatch_brightness_scaling)
             })
             .into_iter()
-            .map(|diag_segment| {
-                DrawableSegment::new()
-                    .segment(diag_segment)
-                    .kind(SegmentKind::ScreenSpaceHatch(
-                        ScreenSpaceHatchKind::Diagonal60,
-                    ))
-                    .build() as DrawableSegment<'s>
-            })
+            .map(screen_hatch_stroke)
             .collect::<Vec<_>>();
         info!("Generated {} diagonal hatch lines.", diag_lines.len());
 
-        [geometry_paths, vert_lines, diag_lines].concat()
+        Rendering::new([geometry_render.strokes(), &vert_lines, &diag_lines].concat())
     }
 
     fn filter_hatch_lines_by(
         &self,
-        segments: &[LineSegment2D<'s, CameraSpace>],
+        segments: &[LineSegment2D<CameraSpace>],
         mut filter: impl FnMut(f64) -> bool,
-    ) -> Vec<LineSegment2D<'s, CameraSpace>> {
+    ) -> Vec<LineSegment2D<CameraSpace>> {
         let segments = segments
             .iter()
             .map(LineSegment2D::to_3d)
@@ -425,7 +411,7 @@ impl<'s> SceneCamera<'s> {
     }
 
     // https://smashingpencilsart.com/how-do-you-hatch-with-a-pen/
-    fn vertical_hatch_lines(&self) -> Vec<LineSegment2D<'s, CameraSpace>> {
+    fn vertical_hatch_lines(&self) -> Vec<LineSegment2D<CameraSpace>> {
         let initial_offset = self.camera.render_options.hatch_pixel_spacing / 2.0;
 
         let mut segments = Vec::new();
@@ -441,7 +427,7 @@ impl<'s> SceneCamera<'s> {
         segments
     }
 
-    fn diagonal_hatch_lines(&self) -> Vec<LineSegment2D<'s, CameraSpace>> {
+    fn diagonal_hatch_lines(&self) -> Vec<LineSegment2D<CameraSpace>> {
         let initial_offset = self.camera.render_options.hatch_pixel_spacing / 2.0;
 
         let mut segments = Vec::new();
@@ -497,5 +483,16 @@ impl<'s> SceneCamera<'s> {
         }
 
         segments
+    }
+}
+
+/// Screen-space hatching shades the whole image rather than any one shape, so
+/// its strokes plot with the default pen.
+fn screen_hatch_stroke(segment: LineSegment2D<CameraSpace>) -> Stroke {
+    Stroke {
+        p1: segment.p1,
+        p2: segment.p2,
+        pen: PenId::default(),
+        kind: StrokeKind::Hatch,
     }
 }

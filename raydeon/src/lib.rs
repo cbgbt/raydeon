@@ -10,9 +10,9 @@ pub mod path;
 pub mod ray;
 pub mod scene;
 pub mod shapes;
+pub mod stroke;
 
 use std::fmt::Debug;
-use std::ops::Deref;
 use std::sync::Arc;
 
 pub use camera::{Camera, CameraOptions};
@@ -21,7 +21,10 @@ pub use material::Material;
 pub use path::LineSegment3D;
 pub use ray::{HitData, Ray};
 pub use scene::{Scene, SceneGeometry, SceneLighting};
+pub use stroke::{PenId, Rendering, Stroke, StrokeKind};
 
+/// Tolerance for the approximate geometric comparisons in tests.
+#[cfg(test)]
 pub(crate) static EPSILON: f64 = 0.004;
 
 #[derive(Debug, Copy, Clone)]
@@ -80,30 +83,4 @@ impl DrawableShape {
     pub fn material(&self) -> Option<Material> {
         self.material
     }
-}
-
-#[derive(Debug, Clone, Builder)]
-#[builder(start_fn(name = new))]
-pub struct DrawableSegment<'s> {
-    pub segment: crate::path::LineSegment2D<'s, CameraSpace>,
-    pub kind: SegmentKind,
-}
-
-impl<'s> Deref for DrawableSegment<'s> {
-    type Target = crate::path::LineSegment2D<'s, CameraSpace>;
-
-    fn deref(&self) -> &Self::Target {
-        &self.segment
-    }
-}
-
-#[derive(Debug, Copy, Clone)]
-pub enum SegmentKind {
-    ScreenSpaceHatch(ScreenSpaceHatchKind),
-    Path,
-}
-#[derive(Debug, Copy, Clone)]
-pub enum ScreenSpaceHatchKind {
-    Vertical,
-    Diagonal60,
 }

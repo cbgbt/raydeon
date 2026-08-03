@@ -103,37 +103,27 @@ pub(crate) fn raydeon_geometry_from_py_object(
 
 #[derive(Debug)]
 #[pyclass(frozen)]
-/// The output of a raydeon render.
-///
-/// A line segment, associated with a shape.
-pub(crate) struct DrawableSegment {
+/// One pen stroke of a finished render.
+pub(crate) struct Stroke {
     p1: [f64; 2],
     p2: [f64; 2],
-    kind: SegmentKind,
-
-    raydeon_drawable: Option<raydeon::DrawableShape>,
+    pen: usize,
+    kind: StrokeKind,
 }
 
-impl From<raydeon::DrawableSegment<'_>> for DrawableSegment {
-    fn from(value: raydeon::DrawableSegment<'_>) -> Self {
-        let p1 = value.p1.to_array();
-        let p2 = value.p2.to_array();
-
-        let raydeon_drawable = value.segment.get_shape().cloned();
-
-        let kind = value.kind.into();
-
+impl From<&raydeon::Stroke> for Stroke {
+    fn from(value: &raydeon::Stroke) -> Self {
         Self {
-            p1,
-            p2,
-            raydeon_drawable,
-            kind,
+            p1: value.p1.to_array(),
+            p2: value.p2.to_array(),
+            pen: value.pen.value(),
+            kind: value.kind.into(),
         }
     }
 }
 
 #[pymethods]
-impl DrawableSegment {
+impl Stroke {
     #[getter]
     fn p1<'py>(&self, py: Python<'py>) -> Bound<'py, PyArray<f64, Ix1>> {
         PyArray::from_slice_bound(py, &self.p1)
@@ -145,15 +135,12 @@ impl DrawableSegment {
     }
 
     #[getter]
-    fn material(&self) -> Option<Material> {
-        self.raydeon_drawable
-            .as_ref()
-            .and_then(|d| d.material())
-            .map(|m| m.into())
+    fn pen(&self) -> usize {
+        self.pen
     }
 
     #[getter]
-    fn kind(&self) -> SegmentKind {
+    fn kind(&self) -> StrokeKind {
         self.kind
     }
 
@@ -165,28 +152,23 @@ impl DrawableSegment {
 
 #[pyclass(eq)]
 #[derive(Debug, PartialEq, Eq, Copy, Clone)]
-pub(crate) enum SegmentKind {
-    VerticalHatch,
-    DiagonalHatch,
-    Path,
+pub(crate) enum StrokeKind {
+    Outline,
+    Hatch,
 }
 
-impl From<raydeon::SegmentKind> for SegmentKind {
-    fn from(value: raydeon::SegmentKind) -> Self {
+impl From<raydeon::StrokeKind> for StrokeKind {
+    fn from(value: raydeon::StrokeKind) -> Self {
         match value {
-            raydeon::SegmentKind::ScreenSpaceHatch(raydeon::ScreenSpaceHatchKind::Vertical) => {
-                SegmentKind::VerticalHatch
-            }
-            raydeon::SegmentKind::ScreenSpaceHatch(raydeon::ScreenSpaceHatchKind::Diagonal60) => {
-                SegmentKind::VerticalHatch
-            }
-            raydeon::SegmentKind::Path => SegmentKind::Path,
+            raydeon::StrokeKind::Outline => StrokeKind::Outline,
+            raydeon::StrokeKind::Hatch => StrokeKind::Hatch,
         }
     }
 }
 
 pub(crate) fn register(m: &Bound<'_, PyModule>) -> PyResult<()> {
     m.add_class::<DrawableShape>()?;
-    m.add_class::<DrawableSegment>()?;
+    m.add_class::<Stroke>()?;
+    m.add_class::<StrokeKind>()?;
     Ok(())
 }

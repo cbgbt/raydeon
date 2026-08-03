@@ -5,7 +5,7 @@ use pyo3::prelude::*;
 use raydeon::SceneLighting;
 
 use crate::camera::Camera;
-use crate::drawables::{DrawableSegment, DrawableShape};
+use crate::drawables::{DrawableShape, Stroke};
 use crate::light::PointLight;
 use crate::linear::Point3;
 
@@ -47,20 +47,15 @@ impl Scene {
         Ok(Self { scene })
     }
 
-    fn render(&self, py: Python, camera: &Camera) -> Vec<DrawableSegment> {
+    fn render(&self, py: Python, camera: &Camera) -> Vec<Stroke> {
         py.allow_threads(|| {
             let cam = self.scene.attach_camera(camera.0.clone());
-            cam.render().into_iter().map(Into::into).collect()
+            cam.render().strokes().iter().map(Into::into).collect()
         })
     }
 
     #[pyo3(signature = (camera, seed=None))]
-    fn render_with_lighting(
-        &self,
-        py: Python,
-        camera: &Camera,
-        seed: Option<u64>,
-    ) -> Vec<DrawableSegment> {
+    fn render_with_lighting(&self, py: Python, camera: &Camera, seed: Option<u64>) -> Vec<Stroke> {
         py.allow_threads(|| {
             let cam = self.scene.attach_camera(camera.0.clone());
             let cam = if let Some(seed) = seed {
@@ -69,7 +64,7 @@ impl Scene {
                 cam
             };
             let render_result = cam.render_with_lighting();
-            render_result.into_iter().map(Into::into).collect()
+            render_result.strokes().iter().map(Into::into).collect()
         })
     }
 
@@ -114,11 +109,11 @@ impl LineSegment3D {
     }
 }
 
-impl<Space> From<raydeon::LineSegment3D<'_, Space>> for LineSegment3D
+impl<Space> From<raydeon::LineSegment3D<Space>> for LineSegment3D
 where
     Space: Copy + Clone + std::fmt::Debug,
 {
-    fn from(value: raydeon::LineSegment3D<'_, Space>) -> Self {
+    fn from(value: raydeon::LineSegment3D<Space>) -> Self {
         Self {
             p1: value.p1().to_array(),
             p2: value.p2().to_array(),
@@ -126,7 +121,7 @@ where
     }
 }
 
-impl<Space> From<LineSegment3D> for raydeon::LineSegment3D<'_, Space>
+impl<Space> From<LineSegment3D> for raydeon::LineSegment3D<Space>
 where
     Space: Copy + Clone + std::fmt::Debug,
 {
